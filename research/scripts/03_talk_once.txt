@@ -1,0 +1,19 @@
+# One interact press. The manual uses C-down to confirm and talk.
+# Expected:
+#   diff_range quiet talking over 0x801BC000..0x801BD000 and the player object
+#   shows a character index or text timer that climbs, then holds.
+#   echo lines name the values. A timeout means nobody was in front of Mega Man.
+# This does not patch the printer.
+
+timeout 180
+require_u16 0x80204A1E gt 0
+snapshot quiet
+press CDOWN 20
+wait 30
+snapshot talking
+diff_range quiet talking 0x802049B0 0x1000
+diff_range quiet talking 0x801BC000 0x1000
+wait 20
+snapshot talking_later
+diff_range talking talking_later 0x802049B0 0x200
+screenshot talk

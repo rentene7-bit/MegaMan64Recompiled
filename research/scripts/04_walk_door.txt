@@ -1,0 +1,29 @@
+# Walk forward, then sideways. Used to separate "room id" from animation noise.
+# Expected:
+#   calls_walk.txt is non-empty only if the binary was rebuilt with
+#   trace_mode = true. The door transition is the set of names in
+#   calls_diff_idle_walk.txt that are not also in a second walk of the same room.
+#   diff_range idle walked on 0x801BC000 length 0x1000 is the status-block candidate.
+#   Player position halfwords near 0x802049B0+0x14 should change while walking.
+#   A room-id byte changes on a door and stays put during the second walk.
+
+timeout 300
+require_u16 0x80204A1E gt 0
+calls_start
+snapshot idle
+stick 0 90
+wait 180
+stick 0 0
+wait 15
+snapshot walked
+calls_stop walk
+diff_range idle walked 0x801BC000 0x1000
+diff_range idle walked 0x802049B0 0x80
+calls_start
+stick 40 0
+wait 90
+stick 0 0
+wait 15
+calls_stop walk_same_room
+calls_diff walk walk_same_room
+screenshot after_walk

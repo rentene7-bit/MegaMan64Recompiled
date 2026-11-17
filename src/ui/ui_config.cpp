@@ -5,6 +5,7 @@
 #include "zelda_debug.h"
 #include "zelda_render.h"
 #include "zelda_support.h"
+#include "remaster.hpp"
 #include "promptfont.h"
 #include "ultramodern/config.hpp"
 #include "ultramodern/ultramodern.hpp"
@@ -32,10 +33,12 @@ int recompui::config_tab_to_index(recompui::ConfigTab tab) {
         return 2;
     case recompui::ConfigTab::Sound:
         return 3;
-    case recompui::ConfigTab::Mods:
+    case recompui::ConfigTab::Remaster:
         return 4;
-    case recompui::ConfigTab::Debug:
+    case recompui::ConfigTab::Mods:
         return 5;
+    case recompui::ConfigTab::Debug:
+        return 6;
     default:
         assert(false && "Unknown config tab.");
         return 0;
@@ -409,7 +412,7 @@ int zelda64::get_bgm_volume() {
     return sound_options_context.bgm_volume.load();
 }
 
-/*void zelda64::set_sfx_volume(int volume) {
+void zelda64::set_sfx_volume(int volume) {
     sound_options_context.sfx_volume.store(volume);
 	if (sound_options_model_handle) {
 		sound_options_model_handle.DirtyVariable("sfx_volume");
@@ -429,7 +432,7 @@ void zelda64::set_voice_volume(int volume) {
 
 int zelda64::get_voice_volume() {
     return sound_options_context.voice_volume.load();
-}*/
+}
 
 void zelda64::set_low_health_beeps_enabled(bool enabled) {
     sound_options_context.low_health_beeps_enabled.store((int)enabled);
@@ -562,6 +565,45 @@ public:
         recompui::register_event(listener, "close_config_menu",
             [](const std::string& param, Rml::Event& event) {
                 close_config_menu();
+            });
+
+        recompui::register_event(listener, "select_bonus_disc",
+            [](const std::string&, Rml::Event&) {
+                zelda64::open_file_dialog([](bool success, const std::filesystem::path& path) {
+                    if (!success) {
+                        return;
+                    }
+                    remaster::set_bonus_disc_path(path);
+                    zelda64::save_config();
+                });
+            });
+
+        recompui::register_event(listener, "select_secondary_disc",
+            [](const std::string&, Rml::Event&) {
+                zelda64::open_file_dialog([](bool success, const std::filesystem::path& path) {
+                    if (!success) {
+                        return;
+                    }
+                    remaster::set_secondary_disc_path(path);
+                    if (general_model_handle) {
+                        general_model_handle.DirtyVariable("remaster_audio_summary");
+                    }
+                    zelda64::save_config();
+                });
+            });
+
+        recompui::register_event(listener, "select_ps1_disc",
+            [](const std::string&, Rml::Event&) {
+                zelda64::open_file_dialog([](bool success, const std::filesystem::path& path) {
+                    if (!success) {
+                        return;
+                    }
+                    remaster::set_disc_path(path);
+                    if (general_model_handle) {
+                        general_model_handle.DirtyVariable("remaster_disc_status");
+                    }
+                    zelda64::save_config();
+                });
             });
 
         recompui::register_event(listener, "open_quit_game_prompt",
@@ -948,6 +990,72 @@ public:
         bind_option(constructor, "radio_comm_box_mode", &control_options_context.radio_comm_box_mode);
         bind_option(constructor, "invert_y_axis_mode", &control_options_context.invert_y_axis_mode);
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
+
+        constructor.BindFunc("remaster_disc_status",
+            [](Rml::Variant& out) { out = remaster::disc_report().summary; },
+            [](const Rml::Variant&) {});
+        constructor.BindFunc("remaster_draw_distance",
+            [](Rml::Variant& out) { out = std::string(remaster::draw_distance_name(remaster::draw_distance())); },
+            [](const Rml::Variant& in) {
+                remaster::set_draw_distance_name(in.Get<std::string>());
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("remaster_draw_distance");
+                }
+            });
+        constructor.BindFunc("remaster_texture_budget",
+            [](Rml::Variant& out) { out = std::string(remaster::texture_budget_name(remaster::texture_budget())); },
+            [](const Rml::Variant& in) {
+                remaster::set_texture_budget_name(in.Get<std::string>());
+                zelda64::renderer::trigger_texture_pack_update();
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("remaster_texture_budget");
+                }
+            });
+        constructor.BindFunc("remaster_ps1_music",
+            [](Rml::Variant& out) { out = std::string(remaster::ps1_music_enabled() ? "On" : "Off"); },
+            [](const Rml::Variant& in) {
+                remaster::set_ps1_music_enabled(in.Get<std::string>() == "On");
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("remaster_ps1_music");
+                }
+            });
+        constructor.BindFunc("remaster_audio_summary",
+            [](Rml::Variant& out) { out = remaster::audio_language_summary(); },
+            [](const Rml::Variant&) {});
+        constructor.BindFunc("remaster_difficulty",
+            [](Rml::Variant& out) { out = std::string(remaster::difficulty_name(remaster::difficulty())); },
+            [](const Rml::Variant& in) { remaster::set_difficulty_name(in.Get<std::string>()); });
+        constructor.BindFunc("remaster_ngplus",
+            [](Rml::Variant& out) { out = std::string(remaster::new_game_plus() ? "On" : "Off"); },
+            [](const Rml::Variant& in) { remaster::set_new_game_plus(in.Get<std::string>() == "On"); });
+        constructor.BindFunc("remaster_aim_mode",
+            [](Rml::Variant& out) { out = std::string(remaster::aim_mode_name(remaster::aim_mode())); },
+            [](const Rml::Variant& in) { remaster::set_aim_mode_name(in.Get<std::string>()); });
+        constructor.BindFunc("remaster_colorblind",
+            [](Rml::Variant& out) { out = std::string(remaster::colorblind_name(remaster::colorblind())); },
+            [](const Rml::Variant& in) { remaster::set_colorblind_name(in.Get<std::string>()); });
+        constructor.BindFunc("remaster_comfort",
+            [](Rml::Variant& out) { out = std::string(remaster::motion_comfort() ? "On" : "Off"); },
+            [](const Rml::Variant& in) { remaster::set_motion_comfort(in.Get<std::string>() == "On"); });
+        constructor.BindFunc("remaster_upscale",
+            [](Rml::Variant& out) { out = std::string(remaster::upscale_quality_name(remaster::upscale_quality())); },
+            [](const Rml::Variant& in) { remaster::set_upscale_quality_name(in.Get<std::string>()); });
+        constructor.BindFunc("remaster_lights",
+            [](Rml::Variant& out) { out = std::string(remaster::effect_level_name(remaster::dynamic_lights())); },
+            [](const Rml::Variant& in) {
+                remaster::EffectLevel level = remaster::dynamic_lights();
+                if (remaster::set_effect_level_name(level, in.Get<std::string>())) {
+                    remaster::set_dynamic_lights(level);
+                }
+            });
+        constructor.BindFunc("remaster_cutscene_skip",
+            [](Rml::Variant& out) { out = std::string(remaster::cutscene_skip_enabled() ? "On" : "Off"); },
+            [](const Rml::Variant& in) {
+                remaster::set_cutscene_skip_enabled(in.Get<std::string>() == "On");
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("remaster_cutscene_skip");
+                }
+            });
 
         general_model_handle = constructor.GetModelHandle();
     }

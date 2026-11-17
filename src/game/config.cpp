@@ -1,4 +1,5 @@
 #include "zelda_config.h"
+#include "remaster.hpp"
 #include "recomp_input.h"
 #include "zelda_sound.h"
 #include "zelda_render.h"
@@ -239,6 +240,29 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["joystick_deadzone"] = recomp::get_joystick_deadzone();
     config_json["analog_camera_invert_mode"] = zelda64::get_analog_camera_invert_mode();
     config_json["debug_mode"] = zelda64::get_debug_mode_enabled();
+    config_json["remaster_draw_distance"] = remaster::draw_distance_name(remaster::draw_distance());
+    config_json["remaster_texture_budget"] = remaster::texture_budget_name(remaster::texture_budget());
+    config_json["remaster_ps1_music"] = remaster::ps1_music_enabled();
+    config_json["remaster_cutscene_skip"] = remaster::cutscene_skip_enabled();
+    config_json["ps1_disc_path"] = remaster::disc_path().string();
+    config_json["ps1_secondary_disc_path"] = remaster::secondary_disc_path().string();
+    config_json["ps1_bonus_disc_path"] = remaster::bonus_disc_path().string();
+    config_json["remaster_difficulty"] = remaster::difficulty_name(remaster::difficulty());
+    config_json["remaster_new_game_plus"] = remaster::new_game_plus();
+    config_json["remaster_game_speed"] = remaster::game_speed_percent();
+    config_json["remaster_aim_mode"] = remaster::aim_mode_name(remaster::aim_mode());
+    config_json["remaster_aim_assist"] = remaster::aim_assist();
+    config_json["remaster_one_handed"] = remaster::one_handed();
+    config_json["remaster_colorblind"] = remaster::colorblind_name(remaster::colorblind());
+    config_json["remaster_motion_comfort"] = remaster::motion_comfort();
+    config_json["remaster_narration"] = remaster::narration();
+    config_json["remaster_text_speed"] = remaster::text_speed_name(remaster::text_speed());
+    config_json["remaster_lights"] = remaster::effect_level_name(remaster::dynamic_lights());
+    config_json["remaster_shadows"] = remaster::effect_level_name(remaster::shadows());
+    config_json["remaster_upscale"] = remaster::upscale_quality_name(remaster::upscale_quality());
+    config_json["remaster_seamless"] = remaster::seamless();
+    config_json["remaster_randomizer_seed"] = remaster::randomizer_seed();
+    config_json["rom_path"] = remaster::rom_path().string();
 
     return save_json_with_backups(path, config_json);
 }
@@ -252,6 +276,35 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     recomp::set_joystick_deadzone(from_or_default(config_json, "joystick_deadzone", 0));
     zelda64::set_analog_camera_invert_mode(from_or_default(config_json, "analog_camera_invert_mode", zelda64::AimInvertMode::On));
     zelda64::set_debug_mode_enabled(from_or_default(config_json, "debug_mode", false));
+    remaster::set_draw_distance_name(from_or_default(config_json, "remaster_draw_distance", std::string("Off")));
+    remaster::set_texture_budget_name(from_or_default(config_json, "remaster_texture_budget", std::string("512 MB")));
+    remaster::set_ps1_music_enabled(from_or_default(config_json, "remaster_ps1_music", false));
+    remaster::set_cutscene_skip_enabled(from_or_default(config_json, "remaster_cutscene_skip", false));
+    remaster::set_disc_path(from_or_default(config_json, "ps1_disc_path", std::string()));
+    remaster::set_secondary_disc_path(from_or_default(config_json, "ps1_secondary_disc_path", std::string()));
+    remaster::set_bonus_disc_path(from_or_default(config_json, "ps1_bonus_disc_path", std::string()));
+    remaster::set_difficulty_name(from_or_default(config_json, "remaster_difficulty", std::string("Normal")));
+    remaster::set_new_game_plus(from_or_default(config_json, "remaster_new_game_plus", false));
+    remaster::set_game_speed_percent(from_or_default(config_json, "remaster_game_speed", 100));
+    remaster::set_aim_mode_name(from_or_default(config_json, "remaster_aim_mode", std::string("Stick")));
+    remaster::set_aim_assist(from_or_default(config_json, "remaster_aim_assist", 0));
+    remaster::set_one_handed(from_or_default(config_json, "remaster_one_handed", false));
+    remaster::set_colorblind_name(from_or_default(config_json, "remaster_colorblind", std::string("Off")));
+    remaster::set_motion_comfort(from_or_default(config_json, "remaster_motion_comfort", false));
+    remaster::set_narration(from_or_default(config_json, "remaster_narration", false));
+    remaster::set_text_speed_name(from_or_default(config_json, "remaster_text_speed", std::string("Fast")));
+    remaster::EffectLevel lights = remaster::EffectLevel::Off;
+    if (remaster::set_effect_level_name(lights, from_or_default(config_json, "remaster_lights", std::string("Off")))) {
+        remaster::set_dynamic_lights(lights);
+    }
+    remaster::EffectLevel shadows = remaster::EffectLevel::Off;
+    if (remaster::set_effect_level_name(shadows, from_or_default(config_json, "remaster_shadows", std::string("Off")))) {
+        remaster::set_shadows(shadows);
+    }
+    remaster::set_upscale_quality_name(from_or_default(config_json, "remaster_upscale", std::string("x2")));
+    remaster::set_seamless(from_or_default(config_json, "remaster_seamless", false));
+    remaster::set_randomizer_seed(from_or_default(config_json, "remaster_randomizer_seed", std::string()));
+    remaster::note_rom_path(from_or_default(config_json, "rom_path", std::string()));
 }
 
 bool load_general_config(const std::filesystem::path& path) {
@@ -475,6 +528,7 @@ void zelda64::load_config() {
     detect_steam_deck();
 
     std::filesystem::path recomp_dir = zelda64::get_app_folder_path();
+    remaster::set_app_folder(recomp_dir);
     std::filesystem::path general_path = recomp_dir / general_filename;
     std::filesystem::path graphics_path = recomp_dir / graphics_filename;
     std::filesystem::path controls_path = recomp_dir / controls_filename;

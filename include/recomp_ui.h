@@ -64,6 +64,7 @@ namespace recompui {
         Controls,
         Graphics,
         Sound,
+        Remaster,
         Mods,
         Debug,
     };

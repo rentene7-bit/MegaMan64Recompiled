@@ -104,6 +104,60 @@
                         </div>
                     </div>
 
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(10)">
+                        <label class="config-option__title">PS1 disc</label>
+                        <div class="config-option__list">
+                            <button class="nav-vert" id="remaster_disc_button" onclick="select_ps1_disc">Select disc image</button>
+                        </div>
+                        <label>{{remaster_disc_status}}</label>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(11)">
+                        <label class="config-option__title">Draw distance</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_draw_distance" data-checked="remaster_draw_distance" value="Off" id="remaster_draw_off"/>
+                            <label class="config-option__tab-label" for="remaster_draw_off">Off</label>
+                            <input type="radio" class="nav-vert" name="remaster_draw_distance" data-checked="remaster_draw_distance" value="Low" id="remaster_draw_low"/>
+                            <label class="config-option__tab-label" for="remaster_draw_low">Low</label>
+                            <input type="radio" class="nav-vert" name="remaster_draw_distance" data-checked="remaster_draw_distance" value="Medium" id="remaster_draw_medium"/>
+                            <label class="config-option__tab-label" for="remaster_draw_medium">Medium</label>
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(12)">
+                        <label class="config-option__title">Texture pack budget</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_texture_budget" data-checked="remaster_texture_budget" value="256 MB" id="remaster_budget_256"/>
+                            <label class="config-option__tab-label" for="remaster_budget_256">256 MB</label>
+                            <input type="radio" class="nav-vert" name="remaster_texture_budget" data-checked="remaster_texture_budget" value="512 MB" id="remaster_budget_512"/>
+                            <label class="config-option__tab-label" for="remaster_budget_512">512 MB</label>
+                            <input type="radio" class="nav-vert" name="remaster_texture_budget" data-checked="remaster_texture_budget" value="1 GB" id="remaster_budget_1024"/>
+                            <label class="config-option__tab-label" for="remaster_budget_1024">1 GB</label>
+                            <input type="radio" class="nav-vert" name="remaster_texture_budget" data-checked="remaster_texture_budget" value="Unlimited" id="remaster_budget_unlimited"/>
+                            <label class="config-option__tab-label" for="remaster_budget_unlimited">Unlimited</label>
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(13)">
+                        <label class="config-option__title">PS1 music</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_ps1_music" data-checked="remaster_ps1_music" value="Off" id="remaster_music_off"/>
+                            <label class="config-option__tab-label" for="remaster_music_off">Off</label>
+                            <input type="radio" class="nav-vert" name="remaster_ps1_music" data-checked="remaster_ps1_music" value="On" id="remaster_music_on"/>
+                            <label class="config-option__tab-label" for="remaster_music_on">On</label>
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(14)">
+                        <label class="config-option__title">Cutscene skip</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_cutscene_skip" data-checked="remaster_cutscene_skip" value="Off" id="remaster_skip_off"/>
+                            <label class="config-option__tab-label" for="remaster_skip_off">Off</label>
+                            <input type="radio" class="nav-vert" name="remaster_cutscene_skip" data-checked="remaster_cutscene_skip" value="On" id="remaster_skip_on"/>
+                            <label class="config-option__tab-label" for="remaster_skip_on">On</label>
+                        </div>
+                    </div>
+
                 </div>
 
                 <!-- Descriptions -->
@@ -147,6 +201,21 @@
                     </p>
                     <p data-if="cur_config_index == 9">
                         Inverts the camera controls for the analog camera if it's enabled. <b>None</b> is the default.
+                    </p>
+                    <p data-if="cur_config_index == 10">
+                        Your own Mega Man Legends or Rockman DASH disc image: BIN/CUE, ISO, or uncompressed CHD. The language comes from that disc. Nothing from the disc is stored with the game. If this is empty or cannot be read, voices and music stay on the N64 soundtrack.
+                    </p>
+                    <p data-if="cur_config_index == 11">
+                        Experimental. <b>Off</b> is the default and the right choice on a weak GPU or a shared-memory machine. <b>Low</b> and <b>Medium</b> only push the fog, and they never grow render buffers. Actor pop-in is unchanged. Turn it off if the frame rate drops.
+                    </p>
+                    <p data-if="cur_config_index == 12">
+                        Caps how much HD texture data is loaded from the texture_packs folder. <b>512 MB</b> is the default on every PC, including a handheld with shared graphics memory. Lower it when RAM is tight. This does not raise the internal resolution.
+                    </p>
+                    <p data-if="cur_config_index == 13">
+                        Experimental and off by default. CD audio and sequenced files on the disc are recognized, but the game's music call is not hooked up yet, so the N64 soundtrack still plays.
+                    </p>
+                    <p data-if="cur_config_index == 14">
+                        Experimental and off by default. Backspace, or the controller Back button, asks the current fade to finish during a cutscene. It does not yet advance the cutscene itself.
                     </p>
                 </div>
             </div>

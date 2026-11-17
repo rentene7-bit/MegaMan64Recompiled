@@ -2,6 +2,11 @@
 
 #include "librecomp/helpers.hpp"
 #include "recomp_input.h"
+#include "remaster.hpp"
+#ifdef MM64R_RESEARCH
+#include "research.hpp"
+#endif
+#include "remaster_ui.h"
 #include "ultramodern/ultramodern.hpp"
 
 // Arrays that hold the mappings for every input for keyboard and controller respectively.
@@ -106,11 +111,60 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
 
         cur_y = recomp::get_input_analog(keyboard_input_mappings[(size_t)GameInput::Y_AXIS_POS])
                 - recomp::get_input_analog(keyboard_input_mappings[(size_t)GameInput::Y_AXIS_NEG]) + joystick_y;
+
+        /* Right stick rotates the camera through the game's existing rotate buttons.
+         * The threshold is the same on every controller, so a light touch does not spin the view. */
+        float right_x = 0.0f;
+        float right_y = 0.0f;
+        recomp::get_right_analog(&right_x, &right_y);
+        constexpr float kCameraThreshold = 0.45f;
+        if (right_x <= -kCameraThreshold) {
+            cur_buttons |= 0x2000;
+        }
+        if (right_x >= kCameraThreshold) {
+            cur_buttons |= 0x0010;
+        }
+        (void)right_y;
+        if (remaster::aim_uses_gyro()) {
+            float gyro_x = 0.0f;
+            float gyro_y = 0.0f;
+            recomp::get_gyro_deltas(&gyro_x, &gyro_y);
+            gyro_x = remaster::soften_aim(gyro_x);
+            gyro_y = remaster::soften_aim(gyro_y);
+            if (gyro_x <= -0.75f) {
+                cur_buttons |= 0x2000;
+            }
+            if (gyro_x >= 0.75f) {
+                cur_buttons |= 0x0010;
+            }
+            /* C-right is the game's look button. While it is held, gyro moves the stick
+             * so look mode can aim. It does not replace the stick during normal movement. */
+            if ((cur_buttons & 0x0001u) != 0) {
+                cur_x = std::clamp(cur_x + gyro_x, -1.0f, 1.0f);
+                cur_y = std::clamp(cur_y + gyro_y, -1.0f, 1.0f);
+            }
+        }
+        if (remaster::one_handed()) {
+            const uint16_t rotate_left = cur_buttons & 0x2000;
+            const uint16_t rotate_right = cur_buttons & 0x0010;
+            cur_buttons = static_cast<uint16_t>((cur_buttons & ~0x2010u) | (rotate_left ? 0x0010u : 0) | (rotate_right ? 0x2000u : 0));
+        }
     }
+
+#ifdef MM64R_RESEARCH
+    if (mm64r::script_active()) {
+        mm64r::apply_input(&cur_buttons, &cur_x, &cur_y);
+    }
+#endif
+
+    remaster_ui::on_game_buttons(cur_buttons);
 
     *buttons_out = cur_buttons;
     *x_out = std::clamp(cur_x, -1.0f, 1.0f);
     *y_out = std::clamp(cur_y, -1.0f, 1.0f);
+    if (remaster::speedrun_active()) {
+        remaster::record_ghost_sample(cur_buttons, static_cast<int8_t>(*x_out * 127.0f), static_cast<int8_t>(*y_out * 127.0f));
+    }
 
     return true;
 }

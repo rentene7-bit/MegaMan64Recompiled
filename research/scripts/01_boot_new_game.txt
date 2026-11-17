@@ -1,0 +1,20 @@
+# Best-effort title to in-game. Needs the US ROM already accepted by the launcher
+# (portable.txt folder, file megaman.n64.us.1.0.z64) and MM64R_AUTOSTART=1.
+# Expected session.log:
+#   echo player_hp 80     once the player object has spawned
+#   SCRIPT DONE
+# A timeout line means the menu needed more confirms than this script sends.
+# Do not commit research/out.
+
+autostart
+wait 180
+press START 10
+wait 90
+press A 10
+wait 90
+press A 10
+wait 120
+timeout 900
+wait_u16 0x80204A1E gt 0
+echo u16 0x80204A1E player_hp
+screenshot boot_field

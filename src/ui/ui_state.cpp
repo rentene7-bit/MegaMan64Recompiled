@@ -24,6 +24,7 @@
 #include "ui_rml_hacks.hpp"
 #include "ui_elements.h"
 #include "ui_mod_menu.h"
+#include "remaster_ui.h"
 #include "ui_mod_installer.h"
 #include "ui_renderer.h"
 
@@ -556,6 +557,8 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
     if (!ui_state) {
         return;
     }
+
+    remaster_ui::on_frame(ultramodern::is_game_started());
 
     // Return to the launcher if no menu is open and the game isn't started.
     if (!recompui::is_any_context_shown() && !ultramodern::is_game_started()) {

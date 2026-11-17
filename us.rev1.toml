@@ -1,4 +1,7 @@
 # Config file for MegaMan 64 Recompilation.
+# Call logging for the research harness: set trace_mode = true, rerun N64Recomp, and
+# configure with -DMM64R_RESEARCH=ON. Leave it false for a normal build.
+# trace_mode = true
 
 [input]
 entrypoint = 0x80025C00
@@ -180,6 +183,74 @@ text =	"rect_aspect_stretch(rdram, ctx);"
 func = "func_8002E8FC_9CFC"
 before_vram = 0x8002ED7C
 text =	"rect_aspect_auto(rdram, ctx);"
+
+# Player object is a0. Record it and its live HP at +0x6E.
+[[patches.hook]]
+func = "func_80069A64_44E64"
+before_vram = 0x80069A64
+text = "remaster_note_player_ctx(rdram, ctx);"
+
+# Generic hurt: r16 is the victim, r17 is the damage after defense, HP is at +0x6E.
+[[patches.hook]]
+func = "func_8006E838_49C38"
+before_vram = 0x8006E9E0
+text = "remaster_scale_damage(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8006E838_49C38"
+before_vram = 0x8006EA04
+text = "remaster_scale_damage(rdram, ctx);"
+
+# Boss bar object is a0. The actor pointer is at +0x20 and that actor's HP is at +0x6E.
+[[patches.hook]]
+func = "func_80049948_24D48"
+before_vram = 0x80049948
+text = "remaster_note_boss_bar(rdram, ctx);"
+
+# Printer countdown at +0x4. The next instruction subtracts 1. Subtract 2 here
+# so a glyph delay and the 5 / 29 pauses all shrink by about 3x.
+[[patches.hook]]
+func = "func_80061838_3CC38"
+before_vram = 0x800619D0
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
+# v0 is the revealed pointer at +0x6C after its mandatory +1. Step over up to
+# two more bytes below 0x84. An opcode stays for its handler.
+[[patches.hook]]
+func = "func_80061838_3CC38"
+before_vram = 0x80061A28
+text = "remaster_text_pointer(rdram, ctx);"
+
+# Segment pauses. These handlers load a duration from the opcode (29, then 9)
+# into +0x4 and count it down by 1 per call. The glyph hook does not run here.
+# Subtract 2 before each addiu -1 so the pause is about a third as long.
+[[patches.hook]]
+func = "func_80061F14_3D314"
+before_vram = 0x80062020
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
+[[patches.hook]]
+func = "func_80062088_3D488"
+before_vram = 0x80062138
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
+[[patches.hook]]
+func = "func_8006219C_3D59C"
+before_vram = 0x80062210
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
+# Roll's line uses these two, from the 0x800B07BC table:
+# 0x9F -> func_8006323C (fixed wait 10), 0xA4 -> func_8006331C (16-bit wait).
+# For 0xA4, v0 is already the duration minus 1 when the store runs.
+[[patches.hook]]
+func = "func_8006323C_3E63C"
+before_vram = 0x80063304
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
+[[patches.hook]]
+func = "func_8006331C_3E71C"
+before_vram = 0x800633AC
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
 
 #Disable texture LOD
 [[patches.instruction]]

@@ -13,7 +13,11 @@
 
 #include "zelda_render.h"
 #include "recomp_ui.h"
+#include "remaster.hpp"
 #include "concurrentqueue.h"
+#ifdef MM64R_RESEARCH
+#include <cstdlib>
+#endif
 
 static RT64::UserConfiguration::Antialiasing device_max_msaa = RT64::UserConfiguration::Antialiasing::None;
 static bool sample_positions_supported = false;
@@ -160,6 +164,10 @@ void set_application_user_config(RT64::Application* application, const ultramode
 
     application->userConfig.aspectRatio = to_rt64(config.ar_option);
     application->userConfig.antialiasing = to_rt64(config.msaa_option);
+    /* Linear filtering plus three-point sampling is the remaster look. It is
+     * cheaper than RT64's anti-aliased pixel scaling and is the same on every GPU. */
+    application->userConfig.filtering = RT64::UserConfiguration::Filtering::Linear;
+    application->userConfig.threePointFiltering = true;
     application->userConfig.refreshRate = to_rt64(config.rr_option);
     application->userConfig.refreshRateTarget = config.rr_manual_value;
     application->userConfig.internalColorFormat = to_rt64(config.hpfb_option);
@@ -289,6 +297,13 @@ zelda64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::rendere
     thread_id = window_handle.thread_id;
 #endif
     setup_result = map_setup_result(app->setup(thread_id));
+#ifdef MM64R_RESEARCH
+    if (const char* dump_dir = std::getenv("MM64R_DUMP_TEXTURES")) {
+        if (dump_dir[0] != '\0' && app->state != nullptr) {
+            app->state->dumpingTexturesDirectory = dump_dir;
+        }
+    }
+#endif
     // Get the API that RT64 chose.
     chosen_api = map_graphics_api(app->chosenGraphicsAPI);
     if (setup_result != ultramodern::renderer::SetupResult::Success) {
@@ -385,6 +400,12 @@ float zelda64::renderer::RT64Context::get_resolution_scale() const {
 
 void zelda64::renderer::RT64Context::check_texture_pack_actions() {
     bool packs_changed = false;
+    static uint64_t applied_pack_generation = 0;
+    const uint64_t pack_generation = remaster::texture_pack_generation();
+    if (pack_generation != applied_pack_generation) {
+        applied_pack_generation = pack_generation;
+        packs_changed = true;
+    }
     TexturePackAction cur_action;
     while (texture_pack_action_queue.try_dequeue(cur_action)) {
         std::visit(overloaded{
@@ -432,6 +453,9 @@ void zelda64::renderer::RT64Context::check_texture_pack_actions() {
         replacement_directories.reserve(enabled_texture_packs.size());
         for (const std::string &mod_id : sorted_texture_packs) {
             replacement_directories.emplace_back(RT64::ReplacementDirectory(recomp::mods::get_mod_filename(mod_id)));
+        }
+        for (const std::filesystem::path& extra : remaster::active_texture_pack_paths()) {
+            replacement_directories.emplace_back(RT64::ReplacementDirectory(extra));
         }
 
         if (!replacement_directories.empty()) {

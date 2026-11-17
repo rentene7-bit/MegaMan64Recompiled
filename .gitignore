@@ -4,9 +4,24 @@
 .vscode/launch.json
 .vscode/tasks.json
 
-# Input elf and rom files
+# Input elf and rom files. Never commit a game ROM or a disc image.
 *.elf
 *.z64
+*.n64
+*.v64
+*.chd
+*.cue
+*.iso
+uploads/
+
+# Generated from the user's ROM at runtime. Do not commit.
+texture_packs/
+generated/
+research/out/
+patches/patches.bin
+patches/*.o
+patches/*.d
+patches/*.map
 
 # Output C files
 RecompiledFuncs/

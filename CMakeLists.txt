@@ -45,6 +45,8 @@ set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
 add_compile_definitions(HLSL_CPU)
 
+option(MM64R_RESEARCH "Build the autopilot research harness. Leave OFF for release." OFF)
+
 if (RECOMP_FLATPAK)
     add_compile_definitions(RECOMP_FLATPAK)
 endif()
@@ -180,6 +182,14 @@ set (SOURCES
 #        ${CMAKE_SOURCE_DIR}/src/game/recomp_actor_api.cpp
         ${CMAKE_SOURCE_DIR}/src/game/recomp_data_api.cpp
         ${CMAKE_SOURCE_DIR}/src/game/rom_decompression.cpp
+        ${CMAKE_SOURCE_DIR}/src/game/remaster_api.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/remaster.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/disc.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/xa.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/audio.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/ideas.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/upscale.cpp
+        ${CMAKE_SOURCE_DIR}/src/ui/ui_remaster.cpp
 
         ${CMAKE_SOURCE_DIR}/src/ui/ui_renderer.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/ui_state.cpp
@@ -223,8 +233,15 @@ if (APPLE)
     list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/main/support_apple.mm)
 endif()
 
+if (MM64R_RESEARCH)
+    list(APPEND SOURCES
+        ${CMAKE_SOURCE_DIR}/src/research/script.cpp
+        ${CMAKE_SOURCE_DIR}/src/research/research.cpp)
+endif()
+
 target_include_directories(MegaMan64Recompiled PRIVATE
         ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src/remaster
         ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/N64Recomp/include
         ${CMAKE_SOURCE_DIR}/lib/concurrentqueue
         ${CMAKE_SOURCE_DIR}/lib/GamepadMotionHelpers
@@ -434,5 +451,8 @@ endforeach()
 target_sources(MegaMan64Recompiled PRIVATE ${GENERATED_NRM_SOURCES})
 
 target_sources(MegaMan64Recompiled PRIVATE ${SOURCES})
+if (MM64R_RESEARCH)
+    target_compile_definitions(MegaMan64Recompiled PRIVATE MM64R_RESEARCH)
+endif()
 
 set_property(TARGET MegaMan64Recompiled PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

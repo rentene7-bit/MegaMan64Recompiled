@@ -4,6 +4,7 @@
 #include "ultramodern/ultramodern.hpp"
 #include "recomp.h"
 #include "recomp_input.h"
+#include "remaster.hpp"
 #include "zelda_config.h"
 #include "recomp_ui.h"
 #include "SDL.h"
@@ -124,6 +125,19 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
                     set_scanned_input({(uint32_t)InputType::Keyboard, keyevent->keysym.scancode});
                 }
             } else {
+                if (!recompui::is_context_capturing_input() &&
+                    keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_BACKSPACE) {
+                    remaster::request_cutscene_skip();
+                }
+                if (!recompui::is_context_capturing_input() && keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_Q) {
+                    remaster::set_weapon_wheel_open(!remaster::weapon_wheel_open());
+                }
+                if (!recompui::is_context_capturing_input() && keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_LEFTBRACKET) {
+                    remaster::cycle_weapon(-1);
+                }
+                if (!recompui::is_context_capturing_input() && keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_RIGHTBRACKET) {
+                    remaster::cycle_weapon(1);
+                }
                 if (!should_override_keystate(keyevent->keysym.scancode, static_cast<SDL_Keymod>(keyevent->keysym.mod))) {
                     queue_if_enabled(event);
                 }
@@ -195,6 +209,12 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
                 set_scanned_input({(uint32_t)InputType::ControllerDigital, button_event->button});
             }
         } else {
+            if (event->cbutton.button == SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_BACK) {
+                remaster::request_cutscene_skip();
+            }
+            if (event->cbutton.button == SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_RIGHTSTICK) {
+                remaster::set_weapon_wheel_open(!remaster::weapon_wheel_open());
+            }
             queue_if_enabled(event);
         }
         break;
