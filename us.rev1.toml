@@ -239,6 +239,19 @@ func = "func_8006219C_3D59C"
 before_vram = 0x80062210
 text = "ctx->r2 = ADD32(ctx->r2, -2);"
 
+# Roll's line uses these two, from the 0x800B07BC table:
+# 0x9F -> func_8006323C (fixed wait 10), 0xA4 -> func_8006331C (16-bit wait).
+# For 0xA4, v0 is already the duration minus 1 when the store runs.
+[[patches.hook]]
+func = "func_8006323C_3E63C"
+before_vram = 0x80063304
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
+[[patches.hook]]
+func = "func_8006331C_3E71C"
+before_vram = 0x800633AC
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
 #Disable texture LOD
 [[patches.instruction]]
 func = "func_8003912C_1452C"
