@@ -971,6 +971,9 @@ void fill_report_from_image(Image& image, const std::filesystem::path& path, con
                 }
             }
         }
+        if (name.find("GAMEOVER") != std::string::npos || name.find("UNUSED") != std::string::npos) {
+            report.unused_audio_hits++;
+        }
         if (name.size() >= 4 && name.compare(name.size() - 4, 4, ".SEQ") == 0) {
             if (auto text = read_file_text(image, file.lba, std::min(file.length, 256u * 1024u))) {
                 SeqFile entry;
@@ -990,8 +993,27 @@ void fill_report_from_image(Image& image, const std::filesystem::path& path, con
     }
 }
 
-void load_impl(const std::filesystem::path& path) {
-    auto& state = session();
+Session& secondary_session() {
+    static Session state;
+    return state;
+}
+
+Session& bonus_session() {
+    static Session state;
+    return state;
+}
+
+Session& session_by_index(int which) {
+    if (which == 1) {
+        return secondary_session();
+    }
+    if (which == 2) {
+        return bonus_session();
+    }
+    return session();
+}
+
+void load_into(Session& state, const std::filesystem::path& path) {
     std::lock_guard lock(state.mutex);
     state.image.reset();
     state.bincue.reset();
@@ -1061,7 +1083,15 @@ void load_impl(const std::filesystem::path& path) {
 } // namespace
 
 void load(const std::filesystem::path& path) {
-    load_impl(path);
+    load_into(session(), path);
+}
+
+void load_secondary(const std::filesystem::path& path) {
+    load_into(secondary_session(), path);
+}
+
+void load_bonus(const std::filesystem::path& path) {
+    load_into(bonus_session(), path);
 }
 
 DiscReport copy_report() {
@@ -1069,12 +1099,27 @@ DiscReport copy_report() {
     return session().report;
 }
 
+DiscReport copy_report_of(int which) {
+    Session& state = session_by_index(which);
+    std::lock_guard lock(state.mutex);
+    return state.report;
+}
+
 std::mutex& mutex() {
     return session().mutex;
 }
 
 bool read_raw(uint32_t lba, uint8_t* dst2352) {
-    auto& state = session();
+    Session& state = session();
+    if (!state.image) {
+        return false;
+    }
+    return state.image->read_raw(lba, dst2352);
+}
+
+bool read_raw_of(int which, uint32_t lba, uint8_t* dst2352) {
+    Session& state = session_by_index(which);
+    std::lock_guard lock(state.mutex);
     if (!state.image) {
         return false;
     }
@@ -1082,11 +1127,32 @@ bool read_raw(uint32_t lba, uint8_t* dst2352) {
 }
 
 bool read_cdda_sector(int track_index, uint32_t sector_in_track, uint8_t* dst2352) {
-    auto& state = session();
+    Session& state = session();
     if (!state.image) {
         return false;
     }
     return state.image->read_cdda(track_index, sector_in_track, dst2352);
+}
+
+bool read_cdda_of(int which, int track_index, uint32_t sector_in_track, uint8_t* dst2352) {
+    Session& state = session_by_index(which);
+    std::lock_guard lock(state.mutex);
+    if (!state.image) {
+        return false;
+    }
+    return state.image->read_cdda(track_index, sector_in_track, dst2352);
+}
+
+std::vector<XaStream> copy_xa(int which) {
+    Session& state = session_by_index(which);
+    std::lock_guard lock(state.mutex);
+    return state.xa;
+}
+
+std::vector<CddaTrack> copy_cdda(int which) {
+    Session& state = session_by_index(which);
+    std::lock_guard lock(state.mutex);
+    return state.cdda;
 }
 
 const std::vector<XaStream>& xa_streams() {

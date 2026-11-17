@@ -13,6 +13,7 @@ namespace {
 struct Playback {
     bool voice = false;
     bool music = false;
+    int source = 0;
     int stream = -1;
     int track = -1;
     uint32_t sector = 0;
@@ -45,11 +46,7 @@ bool pull_voice_frames(Playback& play, int16_t* dst, size_t frames) {
                 break;
             }
             uint8_t raw[2352];
-            bool got = false;
-            {
-                std::lock_guard disc_lock(disc::mutex());
-                got = disc::read_raw(play.start_lba + play.sector, raw);
-            }
+            const bool got = disc::read_raw_of(play.source, play.start_lba + play.sector, raw);
             play.sector++;
             if (!got) {
                 break;
@@ -87,11 +84,7 @@ bool pull_cdda_frames(Playback& play, int16_t* dst, size_t frames) {
                 break;
             }
             uint8_t raw[2352];
-            bool got = false;
-            {
-                std::lock_guard disc_lock(disc::mutex());
-                got = disc::read_cdda_sector(play.track, play.sector, raw);
-            }
+            const bool got = disc::read_cdda_of(play.source, play.track, play.sector, raw);
             play.sector++;
             if (!got) {
                 break;
@@ -152,20 +145,21 @@ void stop_ps1_audio() {
 }
 
 bool play_voice(int id) {
-    disc::XaStream stream;
-    int index = -1;
-    {
+    const int source = voice_disc_index();
+    const auto streams = disc::copy_xa(source);
+    int index = id;
+    if (source == 0) {
         std::lock_guard disc_lock(disc::mutex());
         index = disc::voice_stream_index(id);
-        const auto& streams = disc::xa_streams();
-        if (index < 0 || index >= static_cast<int>(streams.size())) {
-            return false;
-        }
-        stream = streams[index];
     }
+    if (index < 0 || index >= static_cast<int>(streams.size())) {
+        return false;
+    }
+    const disc::XaStream stream = streams[static_cast<size_t>(index)];
     std::lock_guard play_lock(playback_mutex);
     reset_playback(playback);
     playback.voice = true;
+    playback.source = source;
     playback.stream = index;
     playback.start_lba = stream.start_lba;
     playback.sector_count = stream.sector_count;
@@ -175,26 +169,26 @@ bool play_voice(int id) {
     return true;
 }
 
-bool play_cdda_track(int track_index) {
-    if (!ps1_music_enabled()) {
+bool play_cdda_from(int disc_index, int track_index) {
+    const auto tracks = disc::copy_cdda(disc_index);
+    if (track_index < 0 || track_index >= static_cast<int>(tracks.size())) {
         return false;
-    }
-    disc::CddaTrack track;
-    {
-        std::lock_guard disc_lock(disc::mutex());
-        const auto& tracks = disc::cdda_tracks();
-        if (track_index < 0 || track_index >= static_cast<int>(tracks.size())) {
-            return false;
-        }
-        track = tracks[track_index];
     }
     std::lock_guard play_lock(playback_mutex);
     reset_playback(playback);
     playback.music = true;
+    playback.source = disc_index;
     playback.track = track_index;
-    playback.sector_count = track.sector_count;
+    playback.sector_count = tracks[static_cast<size_t>(track_index)].sector_count;
     playback.rate_hz = 44100;
     return true;
+}
+
+bool play_cdda_track(int track_index) {
+    if (!ps1_music_enabled()) {
+        return false;
+    }
+    return play_cdda_from(0, track_index);
 }
 
 bool voice_active() {
@@ -222,6 +216,13 @@ void mix_audio(float* interleaved_stereo, size_t frames, uint32_t sample_rate) {
     }
     if (!produced) {
         return;
+    }
+    if (playback.voice && !motion_comfort()) {
+        /* One short delay tap. Cheap enough for a shared-memory GPU machine, and skipped by motion comfort. */
+        for (size_t i = 4; i < src.size(); i++) {
+            const int mixed = src[i] + src[i - 4] / 6;
+            src[i] = static_cast<int16_t>(std::clamp(mixed, -32768, 32767));
+        }
     }
     const float gain = output_gain * (playback.voice ? 0.9f : 0.55f);
     mix_source(interleaved_stereo, frames, sample_rate, src.data(), src_frames, rate, gain);

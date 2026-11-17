@@ -33,10 +33,12 @@ int recompui::config_tab_to_index(recompui::ConfigTab tab) {
         return 2;
     case recompui::ConfigTab::Sound:
         return 3;
-    case recompui::ConfigTab::Mods:
+    case recompui::ConfigTab::Remaster:
         return 4;
-    case recompui::ConfigTab::Debug:
+    case recompui::ConfigTab::Mods:
         return 5;
+    case recompui::ConfigTab::Debug:
+        return 6;
     default:
         assert(false && "Unknown config tab.");
         return 0;
@@ -565,6 +567,31 @@ public:
                 close_config_menu();
             });
 
+        recompui::register_event(listener, "select_bonus_disc",
+            [](const std::string&, Rml::Event&) {
+                zelda64::open_file_dialog([](bool success, const std::filesystem::path& path) {
+                    if (!success) {
+                        return;
+                    }
+                    remaster::set_bonus_disc_path(path);
+                    zelda64::save_config();
+                });
+            });
+
+        recompui::register_event(listener, "select_secondary_disc",
+            [](const std::string&, Rml::Event&) {
+                zelda64::open_file_dialog([](bool success, const std::filesystem::path& path) {
+                    if (!success) {
+                        return;
+                    }
+                    remaster::set_secondary_disc_path(path);
+                    if (general_model_handle) {
+                        general_model_handle.DirtyVariable("remaster_audio_summary");
+                    }
+                    zelda64::save_config();
+                });
+            });
+
         recompui::register_event(listener, "select_ps1_disc",
             [](const std::string&, Rml::Event&) {
                 zelda64::open_file_dialog([](bool success, const std::filesystem::path& path) {
@@ -990,6 +1017,35 @@ public:
                 remaster::set_ps1_music_enabled(in.Get<std::string>() == "On");
                 if (general_model_handle) {
                     general_model_handle.DirtyVariable("remaster_ps1_music");
+                }
+            });
+        constructor.BindFunc("remaster_audio_summary",
+            [](Rml::Variant& out) { out = remaster::audio_language_summary(); },
+            [](const Rml::Variant&) {});
+        constructor.BindFunc("remaster_difficulty",
+            [](Rml::Variant& out) { out = std::string(remaster::difficulty_name(remaster::difficulty())); },
+            [](const Rml::Variant& in) { remaster::set_difficulty_name(in.Get<std::string>()); });
+        constructor.BindFunc("remaster_ngplus",
+            [](Rml::Variant& out) { out = std::string(remaster::new_game_plus() ? "On" : "Off"); },
+            [](const Rml::Variant& in) { remaster::set_new_game_plus(in.Get<std::string>() == "On"); });
+        constructor.BindFunc("remaster_aim_mode",
+            [](Rml::Variant& out) { out = std::string(remaster::aim_mode_name(remaster::aim_mode())); },
+            [](const Rml::Variant& in) { remaster::set_aim_mode_name(in.Get<std::string>()); });
+        constructor.BindFunc("remaster_colorblind",
+            [](Rml::Variant& out) { out = std::string(remaster::colorblind_name(remaster::colorblind())); },
+            [](const Rml::Variant& in) { remaster::set_colorblind_name(in.Get<std::string>()); });
+        constructor.BindFunc("remaster_comfort",
+            [](Rml::Variant& out) { out = std::string(remaster::motion_comfort() ? "On" : "Off"); },
+            [](const Rml::Variant& in) { remaster::set_motion_comfort(in.Get<std::string>() == "On"); });
+        constructor.BindFunc("remaster_upscale",
+            [](Rml::Variant& out) { out = std::string(remaster::upscale_quality_name(remaster::upscale_quality())); },
+            [](const Rml::Variant& in) { remaster::set_upscale_quality_name(in.Get<std::string>()); });
+        constructor.BindFunc("remaster_lights",
+            [](Rml::Variant& out) { out = std::string(remaster::effect_level_name(remaster::dynamic_lights())); },
+            [](const Rml::Variant& in) {
+                remaster::EffectLevel level = remaster::dynamic_lights();
+                if (remaster::set_effect_level_name(level, in.Get<std::string>())) {
+                    remaster::set_dynamic_lights(level);
                 }
             });
         constructor.BindFunc("remaster_cutscene_skip",

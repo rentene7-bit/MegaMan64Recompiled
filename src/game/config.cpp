@@ -245,6 +245,24 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["remaster_ps1_music"] = remaster::ps1_music_enabled();
     config_json["remaster_cutscene_skip"] = remaster::cutscene_skip_enabled();
     config_json["ps1_disc_path"] = remaster::disc_path().string();
+    config_json["ps1_secondary_disc_path"] = remaster::secondary_disc_path().string();
+    config_json["ps1_bonus_disc_path"] = remaster::bonus_disc_path().string();
+    config_json["remaster_difficulty"] = remaster::difficulty_name(remaster::difficulty());
+    config_json["remaster_new_game_plus"] = remaster::new_game_plus();
+    config_json["remaster_game_speed"] = remaster::game_speed_percent();
+    config_json["remaster_aim_mode"] = remaster::aim_mode_name(remaster::aim_mode());
+    config_json["remaster_aim_assist"] = remaster::aim_assist();
+    config_json["remaster_one_handed"] = remaster::one_handed();
+    config_json["remaster_colorblind"] = remaster::colorblind_name(remaster::colorblind());
+    config_json["remaster_motion_comfort"] = remaster::motion_comfort();
+    config_json["remaster_narration"] = remaster::narration();
+    config_json["remaster_text_speed"] = remaster::text_speed_name(remaster::text_speed());
+    config_json["remaster_lights"] = remaster::effect_level_name(remaster::dynamic_lights());
+    config_json["remaster_shadows"] = remaster::effect_level_name(remaster::shadows());
+    config_json["remaster_upscale"] = remaster::upscale_quality_name(remaster::upscale_quality());
+    config_json["remaster_seamless"] = remaster::seamless();
+    config_json["remaster_randomizer_seed"] = remaster::randomizer_seed();
+    config_json["rom_path"] = remaster::rom_path().string();
 
     return save_json_with_backups(path, config_json);
 }
@@ -263,6 +281,30 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     remaster::set_ps1_music_enabled(from_or_default(config_json, "remaster_ps1_music", false));
     remaster::set_cutscene_skip_enabled(from_or_default(config_json, "remaster_cutscene_skip", false));
     remaster::set_disc_path(from_or_default(config_json, "ps1_disc_path", std::string()));
+    remaster::set_secondary_disc_path(from_or_default(config_json, "ps1_secondary_disc_path", std::string()));
+    remaster::set_bonus_disc_path(from_or_default(config_json, "ps1_bonus_disc_path", std::string()));
+    remaster::set_difficulty_name(from_or_default(config_json, "remaster_difficulty", std::string("Normal")));
+    remaster::set_new_game_plus(from_or_default(config_json, "remaster_new_game_plus", false));
+    remaster::set_game_speed_percent(from_or_default(config_json, "remaster_game_speed", 100));
+    remaster::set_aim_mode_name(from_or_default(config_json, "remaster_aim_mode", std::string("Stick")));
+    remaster::set_aim_assist(from_or_default(config_json, "remaster_aim_assist", 0));
+    remaster::set_one_handed(from_or_default(config_json, "remaster_one_handed", false));
+    remaster::set_colorblind_name(from_or_default(config_json, "remaster_colorblind", std::string("Off")));
+    remaster::set_motion_comfort(from_or_default(config_json, "remaster_motion_comfort", false));
+    remaster::set_narration(from_or_default(config_json, "remaster_narration", false));
+    remaster::set_text_speed_name(from_or_default(config_json, "remaster_text_speed", std::string("Fast")));
+    remaster::EffectLevel lights = remaster::EffectLevel::Off;
+    if (remaster::set_effect_level_name(lights, from_or_default(config_json, "remaster_lights", std::string("Off")))) {
+        remaster::set_dynamic_lights(lights);
+    }
+    remaster::EffectLevel shadows = remaster::EffectLevel::Off;
+    if (remaster::set_effect_level_name(shadows, from_or_default(config_json, "remaster_shadows", std::string("Off")))) {
+        remaster::set_shadows(shadows);
+    }
+    remaster::set_upscale_quality_name(from_or_default(config_json, "remaster_upscale", std::string("x2")));
+    remaster::set_seamless(from_or_default(config_json, "remaster_seamless", false));
+    remaster::set_randomizer_seed(from_or_default(config_json, "remaster_randomizer_seed", std::string()));
+    remaster::note_rom_path(from_or_default(config_json, "rom_path", std::string()));
 }
 
 bool load_general_config(const std::filesystem::path& path) {

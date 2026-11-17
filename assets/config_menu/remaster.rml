@@ -1,0 +1,121 @@
+<template name="config-menu__remaster">
+    <head>
+    </head>
+    <body>
+        <form class="config__form">
+            <div class="config__hz-wrapper">
+                <div class="config__wrapper" data-event-mouseout="set_cur_config_index(-1)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(20)">
+                        <label class="config-option__title">Second disc</label>
+                        <div class="config-option__list">
+                            <button class="nav-vert" onclick="select_secondary_disc">Select language disc</button>
+                            <button class="nav-vert" onclick="select_bonus_disc">Select bonus disc</button>
+                        </div>
+                        <label>{{remaster_audio_summary}}</label>
+                    </div>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(21)">
+                        <label class="config-option__title">Difficulty</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_difficulty" data-checked="remaster_difficulty" value="Easy" id="remaster_diff_easy"/>
+                            <label class="config-option__tab-label" for="remaster_diff_easy">Easy</label>
+                            <input type="radio" class="nav-vert" name="remaster_difficulty" data-checked="remaster_difficulty" value="Normal" id="remaster_diff_normal"/>
+                            <label class="config-option__tab-label" for="remaster_diff_normal">Normal</label>
+                            <input type="radio" class="nav-vert" name="remaster_difficulty" data-checked="remaster_difficulty" value="Hard" id="remaster_diff_hard"/>
+                            <label class="config-option__tab-label" for="remaster_diff_hard">Hard</label>
+                        </div>
+                    </div>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(22)">
+                        <label class="config-option__title">New Game+</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_ngplus" data-checked="remaster_ngplus" value="Off" id="remaster_ng_off"/>
+                            <label class="config-option__tab-label" for="remaster_ng_off">Off</label>
+                            <input type="radio" class="nav-vert" name="remaster_ngplus" data-checked="remaster_ngplus" value="On" id="remaster_ng_on"/>
+                            <label class="config-option__tab-label" for="remaster_ng_on">On</label>
+                        </div>
+                    </div>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(23)">
+                        <label class="config-option__title">Aim</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_aim_mode" data-checked="remaster_aim_mode" value="Stick" id="remaster_aim_stick"/>
+                            <label class="config-option__tab-label" for="remaster_aim_stick">Stick</label>
+                            <input type="radio" class="nav-vert" name="remaster_aim_mode" data-checked="remaster_aim_mode" value="Gyro" id="remaster_aim_gyro"/>
+                            <label class="config-option__tab-label" for="remaster_aim_gyro">Gyro</label>
+                            <input type="radio" class="nav-vert" name="remaster_aim_mode" data-checked="remaster_aim_mode" value="Both" id="remaster_aim_both"/>
+                            <label class="config-option__tab-label" for="remaster_aim_both">Both</label>
+                        </div>
+                    </div>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(24)">
+                        <label class="config-option__title">Colorblind marks</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_colorblind" data-checked="remaster_colorblind" value="Off" id="remaster_cb_off"/>
+                            <label class="config-option__tab-label" for="remaster_cb_off">Off</label>
+                            <input type="radio" class="nav-vert" name="remaster_colorblind" data-checked="remaster_colorblind" value="Deuteranopia" id="remaster_cb_de"/>
+                            <label class="config-option__tab-label" for="remaster_cb_de">Deuteranopia</label>
+                            <input type="radio" class="nav-vert" name="remaster_colorblind" data-checked="remaster_colorblind" value="Protanopia" id="remaster_cb_pr"/>
+                            <label class="config-option__tab-label" for="remaster_cb_pr">Protanopia</label>
+                            <input type="radio" class="nav-vert" name="remaster_colorblind" data-checked="remaster_colorblind" value="Tritanopia" id="remaster_cb_tr"/>
+                            <label class="config-option__tab-label" for="remaster_cb_tr">Tritanopia</label>
+                        </div>
+                    </div>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(25)">
+                        <label class="config-option__title">Motion comfort</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_comfort" data-checked="remaster_comfort" value="Off" id="remaster_comfort_off"/>
+                            <label class="config-option__tab-label" for="remaster_comfort_off">Off</label>
+                            <input type="radio" class="nav-vert" name="remaster_comfort" data-checked="remaster_comfort" value="On" id="remaster_comfort_on"/>
+                            <label class="config-option__tab-label" for="remaster_comfort_on">On</label>
+                        </div>
+                    </div>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(26)">
+                        <label class="config-option__title">Upscaled textures</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_upscale" data-checked="remaster_upscale" value="Off" id="remaster_up_off"/>
+                            <label class="config-option__tab-label" for="remaster_up_off">Off</label>
+                            <input type="radio" class="nav-vert" name="remaster_upscale" data-checked="remaster_upscale" value="x2" id="remaster_up_x2"/>
+                            <label class="config-option__tab-label" for="remaster_up_x2">x2</label>
+                            <input type="radio" class="nav-vert" name="remaster_upscale" data-checked="remaster_upscale" value="x4" id="remaster_up_x4"/>
+                            <label class="config-option__tab-label" for="remaster_up_x4">x4</label>
+                        </div>
+                    </div>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(27)">
+                        <label class="config-option__title">Dynamic lights</label>
+                        <div class="config-option__list">
+                            <input type="radio" class="nav-vert" name="remaster_lights" data-checked="remaster_lights" value="Off" id="remaster_lights_off"/>
+                            <label class="config-option__tab-label" for="remaster_lights_off">Off</label>
+                            <input type="radio" class="nav-vert" name="remaster_lights" data-checked="remaster_lights" value="Low" id="remaster_lights_low"/>
+                            <label class="config-option__tab-label" for="remaster_lights_low">Low</label>
+                            <input type="radio" class="nav-vert" name="remaster_lights" data-checked="remaster_lights" value="Medium" id="remaster_lights_medium"/>
+                            <label class="config-option__tab-label" for="remaster_lights_medium">Medium</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="config__wrapper">
+                    <p data-if="cur_config_index == 20">
+                        Dual audio appears only after a second disc is loaded and its language differs. Japanese voices are used when one of the two discs is Japanese. Otherwise voices follow the single loaded disc. No synthesized actor voices are created.
+                    </p>
+                    <p data-if="cur_config_index == 21">
+                        Easy, Normal, or Hard. This changes the damage ratios the game will use once the combat hook is connected. Normal is the default.
+                    </p>
+                    <p data-if="cur_config_index == 22">
+                        New Game+ raises the damage you deal and slightly lowers the damage you take. It is a choice for a new run, not a separate mode switch for the whole remaster.
+                    </p>
+                    <p data-if="cur_config_index == 23">
+                        Stick uses the right stick. Gyro adds the controller gyro, including on a handheld. Both uses them together. The same choice exists on every PC.
+                    </p>
+                    <p data-if="cur_config_index == 24">
+                        Door and key notes in the tracker add a shape as well as a color. The game world colors are not recolored.
+                    </p>
+                    <p data-if="cur_config_index == 25">
+                        Shortens fades further and turns off the extra voice reverb. Use this when flashes or extra motion are uncomfortable.
+                    </p>
+                    <p data-if="cur_config_index == 26">
+                        Builds larger textures on this machine from your own ROM. Nothing is downloaded or stored in the game download. x2 is the default and stays inside the texture budget. x4 writes fewer, larger images. Off skips the work on a weak GPU.
+                    </p>
+                    <p data-if="cur_config_index == 27">
+                        Experimental. Off by default. Low and Medium only record a light budget. Real ruin lights are not injected into the frame yet.
+                    </p>
+                </div>
+            </div>
+        </form>
+    </body>
+</template>

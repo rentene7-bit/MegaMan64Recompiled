@@ -41,6 +41,7 @@ struct DiscReport {
     int cdda_tracks = 0;
     int seq_files = 0;
     int seq_notes = 0;
+    int unused_audio_hits = 0;
     std::string summary;
 };
 
@@ -99,14 +100,173 @@ WindowFit fit_window_to_display(int desired_w, int desired_h, int display_w, int
 
 bool play_voice(int id);
 bool play_cdda_track(int track_index);
+bool play_cdda_from(int disc_index, int track_index);
 bool voice_active();
 void stop_ps1_audio();
 void set_output_gain(float gain);
 void mix_audio(float* interleaved_stereo, size_t frames, uint32_t sample_rate);
 
 void tick_autosave();
+void tick_frame(double dt_seconds);
 
 std::vector<TexturePackCandidate> select_texture_packs(std::vector<TexturePackCandidate> packs, uint64_t budget_bytes);
+
+/* Player choices inside the remaster. They are not separate remaster toggles. */
+enum class Difficulty { Easy, Normal, Hard };
+enum class AimMode { Stick, Gyro, Both };
+enum class Colorblind { Off, Deuteranopia, Protanopia, Tritanopia };
+enum class TextSpeed { Normal, Fast, Instant };
+enum class EffectLevel { Off, Low, Medium };
+enum class UpscaleQuality { Off, X2, X4 };
+
+void set_difficulty(Difficulty value);
+Difficulty difficulty();
+const char* difficulty_name(Difficulty value);
+bool set_difficulty_name(const std::string& name);
+int damage_taken_q8();
+int damage_dealt_q8();
+
+void set_new_game_plus(bool enabled);
+bool new_game_plus();
+
+void set_game_speed_percent(int percent);
+int game_speed_percent();
+int game_speed_q8();
+
+void set_aim_mode(AimMode mode);
+AimMode aim_mode();
+const char* aim_mode_name(AimMode mode);
+bool set_aim_mode_name(const std::string& name);
+bool aim_uses_gyro();
+void set_aim_assist(int percent);
+int aim_assist();
+float soften_aim(float value);
+void set_one_handed(bool enabled);
+bool one_handed();
+
+void set_colorblind(Colorblind mode);
+Colorblind colorblind();
+const char* colorblind_name(Colorblind mode);
+bool set_colorblind_name(const std::string& name);
+const char* door_mark(int color_index);
+
+void set_motion_comfort(bool enabled);
+bool motion_comfort();
+void set_narration(bool enabled);
+bool narration();
+std::string narration_command(const std::string& text);
+
+void set_text_speed(TextSpeed speed);
+TextSpeed text_speed();
+const char* text_speed_name(TextSpeed speed);
+bool set_text_speed_name(const std::string& name);
+
+void set_dynamic_lights(EffectLevel level);
+EffectLevel dynamic_lights();
+void set_shadows(EffectLevel level);
+EffectLevel shadows();
+void set_outline(bool enabled);
+bool outline();
+void set_crt(EffectLevel level);
+EffectLevel crt();
+void set_seamless(bool enabled);
+bool seamless();
+int seamless_budget_mb();
+const char* effect_level_name(EffectLevel level);
+bool set_effect_level_name(EffectLevel& destination, const std::string& name);
+
+void set_upscale_quality(UpscaleQuality quality);
+UpscaleQuality upscale_quality();
+const char* upscale_quality_name(UpscaleQuality quality);
+bool set_upscale_quality_name(const std::string& name);
+void note_rom_path(const std::filesystem::path& path);
+std::filesystem::path rom_path();
+int upscale_step();
+
+void set_secondary_disc_path(const std::filesystem::path& path);
+std::filesystem::path secondary_disc_path();
+void set_bonus_disc_path(const std::filesystem::path& path);
+std::filesystem::path bonus_disc_path();
+bool dual_audio_active();
+std::string audio_language_summary();
+int voice_disc_index();
+
+bool lock_on_move_enabled();
+void cycle_weapon(int delta);
+int weapon_slot();
+bool weapon_wheel_open();
+void set_weapon_wheel_open(bool open);
+
+struct TrackerNote {
+    int chests = 0;
+    int chest_goal = 0;
+    int door_color = 0;
+    int items_left = 0;
+};
+TrackerNote tracker();
+void set_tracker(const TrackerNote& note);
+
+struct Loadout {
+    std::string name;
+    int parts[8] = {};
+};
+bool save_loadout(const Loadout& loadout);
+std::vector<Loadout> loadouts();
+
+void mark_gate(const std::string& name);
+std::vector<std::string> visited_gates();
+
+void set_quest_done(const std::string& id, bool done, bool missable);
+int quests_done();
+int missables_open();
+
+struct StatBlock { int attack = 0; int energy = 0; int range = 0; };
+std::string compare_stats(const StatBlock& current, const StatBlock& next);
+
+void set_randomizer_seed(const std::string& seed);
+std::string randomizer_seed();
+std::vector<int> randomizer_order(int count);
+std::string randomizer_share_code();
+
+void start_speedrun();
+void split_speedrun(const std::string& name);
+void reset_speedrun();
+void set_loading(bool loading);
+bool speedrun_active();
+std::string speedrun_clock();
+std::string livesplit_xml();
+
+void record_ghost_sample(uint16_t buttons, int8_t x, int8_t y);
+int ghost_sample_count();
+void clear_ghost();
+
+std::string input_display(uint16_t buttons);
+std::string build_stamp();
+
+void set_enemy_hp(int id, int hp, int max_hp);
+int enemy_bar_count();
+
+void unlock_achievement(const std::string& id);
+int achievements_unlocked();
+void note_bestiary(int id);
+int bestiary_seen();
+
+void set_challenge_mask(uint32_t mask);
+uint32_t challenge_mask();
+int challenge_rank(int seconds);
+
+void enter_photo_mode();
+void exit_photo_mode();
+bool photo_mode();
+
+int music_layers(int intensity);
+int jukebox_track_count(int disc);
+bool play_jukebox(int disc, int track);
+int unused_audio_count();
+std::string version_audit();
+bool snapshot_retry();
+
+std::string ideas_status_line();
 
 } // namespace remaster
 

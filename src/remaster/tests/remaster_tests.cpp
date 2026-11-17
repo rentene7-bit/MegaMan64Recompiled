@@ -257,6 +257,13 @@ void test_disc_and_audio(const std::filesystem::path& dir) {
     expect(jp.language == "japanese", "japanese from SLPS");
     expect(jp.region == "ntsc-j", "ntsc-j region");
 
+    remaster::set_disc_path(iso_path);
+    remaster::set_secondary_disc_path(jp_iso);
+    expect(remaster::dual_audio_active(), "english plus japanese discs enable dual audio");
+    expect(remaster::voice_disc_index() == 1, "japanese disc supplies the voices");
+    remaster::set_secondary_disc_path({});
+    expect(!remaster::dual_audio_active(), "clearing the second disc leaves a single language");
+
     remaster::set_disc_path(dir / "missing.cue");
     const remaster::DiscReport missing = remaster::disc_report();
     expect(!missing.loaded, "missing disc does not load");
@@ -394,6 +401,8 @@ void test_autosave(const std::filesystem::path& dir) {
 
 } // namespace
 
+int run_idea_tests();
+
 int main() {
     const auto dir = std::filesystem::temp_directory_path() / "mm64-remaster-tests";
     std::filesystem::remove_all(dir);
@@ -403,6 +412,7 @@ int main() {
     test_chd(dir);
     test_presentation();
     test_autosave(dir / "app");
+    g_failed += run_idea_tests();
     std::filesystem::remove_all(dir);
     if (g_failed != 0) {
         std::cerr << g_failed << " failure(s)\n";

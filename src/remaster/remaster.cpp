@@ -311,7 +311,7 @@ uint32_t patch_flags() {
 }
 
 int fade_steps() {
-    return 4;
+    return motion_comfort() ? 8 : 4;
 }
 
 int bilerp_mode() {

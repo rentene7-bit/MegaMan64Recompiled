@@ -2,6 +2,7 @@
 
 #include "librecomp/helpers.hpp"
 #include "recomp_input.h"
+#include "remaster.hpp"
 #include "remaster_ui.h"
 #include "ultramodern/ultramodern.hpp"
 
@@ -121,6 +122,24 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
             cur_buttons |= 0x0010;
         }
         (void)right_y;
+        if (remaster::aim_uses_gyro()) {
+            float gyro_x = 0.0f;
+            float gyro_y = 0.0f;
+            recomp::get_gyro_deltas(&gyro_x, &gyro_y);
+            gyro_x = remaster::soften_aim(gyro_x);
+            if (gyro_x <= -0.75f) {
+                cur_buttons |= 0x2000;
+            }
+            if (gyro_x >= 0.75f) {
+                cur_buttons |= 0x0010;
+            }
+            (void)gyro_y;
+        }
+        if (remaster::one_handed()) {
+            const uint16_t rotate_left = cur_buttons & 0x2000;
+            const uint16_t rotate_right = cur_buttons & 0x0010;
+            cur_buttons = static_cast<uint16_t>((cur_buttons & ~0x2010u) | (rotate_left ? 0x0010u : 0) | (rotate_right ? 0x2000u : 0));
+        }
     }
 
     remaster_ui::on_game_buttons(cur_buttons);
@@ -128,6 +147,9 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
     *buttons_out = cur_buttons;
     *x_out = std::clamp(cur_x, -1.0f, 1.0f);
     *y_out = std::clamp(cur_y, -1.0f, 1.0f);
+    if (remaster::speedrun_active()) {
+        remaster::record_ghost_sample(cur_buttons, static_cast<int8_t>(*x_out * 127.0f), static_cast<int8_t>(*y_out * 127.0f));
+    }
 
     return true;
 }

@@ -40,7 +40,14 @@ const std::vector<CddaTrack>& cdda_tracks();
 int voice_stream_index(int voice_id);
 std::mutex& mutex();
 void load(const std::filesystem::path& path);
+void load_secondary(const std::filesystem::path& path);
+void load_bonus(const std::filesystem::path& path);
 DiscReport copy_report();
+DiscReport copy_report_of(int which);
+bool read_raw_of(int which, uint32_t lba, uint8_t* dst2352);
+bool read_cdda_of(int which, int track_index, uint32_t sector, uint8_t* dst2352);
+std::vector<XaStream> copy_xa(int which);
+std::vector<CddaTrack> copy_cdda(int which);
 
 } // namespace remaster::disc
 

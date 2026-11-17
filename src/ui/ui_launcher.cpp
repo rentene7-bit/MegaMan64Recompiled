@@ -5,6 +5,7 @@
 #include "ultramodern/ultramodern.hpp"
 #include "RmlUi/Core.h"
 #include "nfd.h"
+#include "remaster.hpp"
 #include "remaster_ui.h"
 #include <filesystem>
 
@@ -19,6 +20,7 @@ void select_rom() {
     nfdnchar_t* native_path = nullptr;
     zelda64::open_file_dialog([](bool success, const std::filesystem::path& path) {
         if (success) {
+            remaster::note_rom_path(path);
             recomp::RomValidationError rom_error = recomp::select_rom(path, supported_games[0].game_id);
             switch (rom_error) {
                 case recomp::RomValidationError::Good:

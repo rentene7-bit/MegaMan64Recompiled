@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <vector>
 #include <array>
+#include <chrono>
 #include <filesystem>
 #include <numeric>
 #include <stdexcept>
@@ -186,6 +187,11 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 void update_gfx(void*) {
     recomp::handle_events();
     remaster::tick_autosave();
+    static auto last_tick = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    const double dt = std::chrono::duration<double>(now - last_tick).count();
+    last_tick = now;
+    remaster::tick_frame(dt);
 }
 
 static SDL_AudioCVT audio_convert;
