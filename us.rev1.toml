@@ -221,6 +221,24 @@ func = "func_80061838_3CC38"
 before_vram = 0x80061A28
 text = "remaster_text_pointer(rdram, ctx);"
 
+# Segment pauses. These handlers load a duration from the opcode (29, then 9)
+# into +0x4 and count it down by 1 per call. The glyph hook does not run here.
+# Subtract 2 before each addiu -1 so the pause is about a third as long.
+[[patches.hook]]
+func = "func_80061F14_3D314"
+before_vram = 0x80062020
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
+[[patches.hook]]
+func = "func_80062088_3D488"
+before_vram = 0x80062138
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
+[[patches.hook]]
+func = "func_8006219C_3D59C"
+before_vram = 0x80062210
+text = "ctx->r2 = ADD32(ctx->r2, -2);"
+
 #Disable texture LOD
 [[patches.instruction]]
 func = "func_8003912C_1452C"
