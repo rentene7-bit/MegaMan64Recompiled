@@ -247,6 +247,19 @@ const char* text_speed_name(TextSpeed speed) {
     default: return "Fast";
     }
 }
+bool dialogue_glyph(uint8_t value) {
+    return value >= 0x20 && value <= 0x7E;
+}
+
+int dialogue_extra_advance(const uint8_t* upcoming, int count) {
+    int extra = 0;
+    const int cap = std::min(count, 2);
+    while (extra < cap && dialogue_glyph(upcoming[extra])) {
+        extra++;
+    }
+    return extra;
+}
+
 bool set_text_speed_name(const std::string& name) {
     if (name == "Normal") { set_text_speed(TextSpeed::Normal); return true; }
     if (name == "Instant") { set_text_speed(TextSpeed::Instant); return true; }

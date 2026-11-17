@@ -107,6 +107,24 @@ extern "C" void remaster_consume_cutscene_skip(uint8_t* rdram, recomp_context* c
     _return(ctx, remaster::consume_cutscene_skip() ? 1 : 0);
 }
 
+extern "C" void remaster_text_pointer(uint8_t* rdram, recomp_context* ctx) {
+    const int32_t pointer = _arg<0, s32>(rdram, ctx);
+    int extra = 0;
+    if (pointer != 0) {
+        uint8_t upcoming[2] = {};
+        for (int i = 0; i < 2; i++) {
+            const int32_t at = pointer + i;
+            const uint32_t guest = static_cast<uint32_t>(at);
+            if (guest < 0x80000000u || guest >= 0x80800000u) {
+                break;
+            }
+            upcoming[i] = MEM_BU(0, static_cast<int64_t>(at));
+        }
+        extra = remaster::dialogue_extra_advance(upcoming, 2);
+    }
+    _return(ctx, pointer + extra);
+}
+
 extern "C" void remaster_play_voice(uint8_t* rdram, recomp_context* ctx) {
     _return(ctx, remaster::play_voice(_arg<0, s32>(rdram, ctx)) ? 1 : 0);
 }

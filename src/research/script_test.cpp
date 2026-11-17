@@ -70,6 +70,12 @@ int main() {
     expect(skipped.skipped(), "a failed require skips the script");
     expect(!actions.empty() && actions[0].kind == mm64r::Action::Kind::Skip, "skip is reported");
 
+    mm64r::Script poke;
+    expect(poke.load("poke u16 0x80205640 65535\n", error), error.empty() ? "poke loads" : error);
+    actions = poke.on_frame(read_mem);
+    expect(!actions.empty() && actions[0].kind == mm64r::Action::Kind::Poke, "poke is an action");
+    expect(actions[0].address == 0x80205640u && actions[0].value == 65535u, "poke keeps the guest address");
+
     if (g_failed != 0) {
         std::cerr << g_failed << " failed\n";
         return 1;

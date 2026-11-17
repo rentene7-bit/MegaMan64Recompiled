@@ -1,6 +1,6 @@
 # Hook candidates
 
-Static pass on the US 1.0 ROM (SHA1 `f24fe0aff01aec018e2dd558ec4f076cf328129f`). Nothing here is wired. Addresses are guest RAM unless noted as a function. Confidence is high only where a published code and the disassembly name the same field.
+pc1 confirmed the addresses below on a research build of the US 1.0 recomp. "Confirmed" means the harness log matched the field. "TODO" means it is still unknown and must not be guessed. Wired behavior is called out in the last column.
 
 Sources:
 
@@ -17,28 +17,26 @@ A PC port of Legends would still help. Shop prices, upgrade costs, and weapon st
 
 ## Candidates
 
-| Hook | Address or function | Evidence | Confidence | pc1 script |
+| Hook | Address or function | Status | What pc1 showed | Wired? |
 | --- | --- | --- | --- | --- |
-| Player object | `0x802049B0`, passed as `a0` to `func_80069A64` from `func_80069D44` | The code builds this pointer with `lui`/`addiu`. Spawn sets halfword `+0x6E` to 80. | High | `01_boot_new_game.txt` echoes it |
-| Player HP | `0x80204A1E` (`player+0x6E`) | GameShark `81204A1E 0050` is that address. The hurt function `func_8006E838` subtracts from `+0x6E`. Already scaled, not part of this pass. | High | `echo u16 0x80204A1E` should print 80 after a fresh spawn |
-| Buster part slots | `0x80204E00` through `0x80204E02` equipped, `0x80204E04` onward inventory | GameShark byte codes. `0x80204E00` is `player+0x450`. `func_80060590` builds the absolute address. `func_80056608` reads offset `0x450`. The published enum starts at 0 = empty. These are parts, not the special weapon. | High for the bytes, not for "which part is equipped right now" until a diff | `02_inventory_and_weapon.txt` watches `buster_part_0` |
-| Special-weapon ownership | `0x80205640` halfword, `player+0xC90` | GameShark `81205640 FFFF`, "have all special weapons", and the note that Roll still has to equip them. No instruction in the main code segment uses the immediate `0xC90` or `0x5640` as that address, so the writer is probably an overlay or a block copy. | Medium for the address, low for the writer | `02` watches `owned_weapons`. It should not change when cycling equipment. |
-| Equipped special weapon | Unknown byte in `0x802049B0..0x802059B0` | Ownership is a bitfield. Ammo records start at `0x80204EBA` (`player+0x50A`) and step by 8 for the twelve published weapons (machine buster through shining laser). The equipped index should select one record. Poking the ownership halfword desyncs the model; the wheel has to call the writer. | Low until the diff | `02` diffs `idle`/`cleft`/`cleft_again`. The byte that flips and flips back is the candidate. |
-| Ammo records | `0x80204EBA` then +8, twelve times | The twelve infinite-ammo GameShark halfwords are exactly 8 bytes apart. | High for the array, low for which function spends ammo | `02` watches `ammo_0` |
-| Zenny and play time | `0x801BC406` zenny, `0x801BC3F4` / `0x801BC3F6` time | GameShark `811BC406` and `811BC3F4`. `func_8004B7B8` builds `0x801BC3F4`. This is a status block, not proof of a room id. | High for those fields | `04_walk_door.txt` diffs `0x801BC000` for `0x1000` |
-| Room id / door transition | Unknown byte in `0x801BC000..0x801BD000`, writer unknown | No published room id. A door should change one byte that a second walk in the same room does not. | Low | `04_walk_door.txt` plus `calls_diff walk walk_same_room` |
-| Fast travel | Same writer as the door, not found | The support-car / airship trip should hit that function once a door has identified it. | Low | No separate script until `04` names the function |
-| Text printer and delay | Not `func_80050330` | That function counts down `player+0xA5` and steps 8-byte action commands. It also runs for attacks and landings, so it is not a safe text-speed hook. Dialogue is not ASCII in the main ROM. The manual's interact button is C-down. | Low | `03_talk_once.txt`. The climbing value in the player-object diff is the character index; the countdown just before it is the delay. |
-| Chest and door flags | Unknown bits, likely in the `0x801BC000` status block or a save image | No counter is published. One chest should flip one bit. The writer then reveals the record format. | Low | Stand in front of a chest and run `03` or a copy that presses C-down. Compare `diff_range` on `0x801BC000`. |
-| Item and chest tables | No ROM offset | No price-like table in the first 4 MB. Stage geometry docs are PS1/Legends 2 and do not give N64 item records. Prefer a give-item hook over editing packed stage data, once a write watch on an inventory slot (`0x80205650` normal items, `0x8020564C` special items, both GameShark) names the function. | Low | After `02`, a later script can `watch u16 0x80205650 items` while a chest is opened |
-| Boss start | `func_80049948` already receives the bar in `a0`; actor pointer at `+0x20`; HP at actor `+0x6E` | The encounter setup is whoever writes that pointer from null to non-null. Not visible from the title. | Medium for the bar, low for the starter | Needs a save at a boss door. `calls_start` before the fight and `calls_stop boss`. |
-| Lock-on | Z bit `0x2000`. Player buttons were read at `player+0x7C` inside `func_80069A64`. The zero-stores next to state byte `+0x74` are animation resets, not a stick mute. | No GameShark lock flag. Movement while locked is the difference between the walk call set and the Z-held call set, plus whether `player+0x14` keeps changing. | Low | `05_lockon.txt` |
-| Save states | Not a single address | RDRAM is 8 MB (`osMemSize` is set to that). Threads, audio queues, and RT64 caches live outside it. A same-session snapshot at one main-loop point can work later. Practice mode can instead warp plus restore the save block. `quicksaving.cpp` stays compiled out. | High that a raw RDRAM dump is not a save state | `snapshot` is the raw image, for diffs only |
-| Texture hashes | RT64 developer panel, "Start dumping textures" | No game function. Dump names carry the runtime hash. Upscale in place and keep the 16 hex digits. Palette animation emits several hashes. | High for the method | `06_texture_walk.txt` while dumping is on |
-| CRT | Final blit in RT64, not the game | This pin has no CRT setting. A fork would change the swapchain blit shader. | High that it is renderer work | None |
-| Outlines | No marker between world and HUD | Needs an extended display-list command at that boundary, then a depth edge pass. | Medium that the game does not already have it | None |
-| Dynamic lights | Actor light list, writer unknown | Cheapest later hook is before the actor draw, found by watching the display-list head. Not in `UserConfiguration`. | Low for the function, high that the current pin cannot toggle it | None |
-| Shadows | No shadow map in this pin | Do this last. | High that it is not a small patch | None |
+| Player object | `0x802049B0` | Confirmed | Stable across a new game. | Already used by the damage and HP hooks. |
+| Player HP | `0x80204A1E` (`player+0x6E`) u16 | Confirmed | 80 at new game. | Yes. Hurt scaling already reads this field. |
+| Zenny | `0x801BC406` | Confirmed | Matches the GameShark halfword. | No feature needs a write. Left as a known field. |
+| Play time | `0x801BC3F6` tick counter | Confirmed | Counts while the game runs. `0x801BC3F4` is the neighboring half. | Not wired. |
+| Buster part 0 | `0x80204E00` | Confirmed | The part byte, not the special weapon. | Not written. The wheel still must not poke it. |
+| Owned special weapons | `0x80205640` | Confirmed | `0x8000` is the buster only. `poke` of `0xFFFF` persists. Roll still equips. | Not written. Ownership is not the equipped weapon. |
+| Ammo | `0x80204EBA`, stride 8 | Confirmed | The published ammo halfwords. | Not wired. No remaster behavior is "show this ammo" yet. |
+| Dialogue pointer | `0x801D8884`, duplicate `0x801D88DC` | Confirmed | Advances 1 byte per game tick. Buffer is near `0x802ECBB9`. `'a'` is `0x30`, space is `0x4F`. | Yes. `func_80061E44` is the `+0x14` add-1. `func_80061EC4` is the `+0x6C` add-1. Each then steps over up to two more bytes in `0x20..0x7E` and stops before anything else. |
+| Dialogue start delay | `0x801D8874` u16, counts 5..1 | Confirmed | There is no separate text-speed variable. | Left at 5. It is the pause before the line, not the per-character rate. |
+| Texture hashes | `<16 hex>.v5.tmem` from `MM64R_DUMP_TEXTURES` | Confirmed | 1327 unique textures on an early-game walk. | Yes, for loading. A directory of `<16 hex>.png` or `.dds` under `texture_packs` gets an `rt64.json` built from those names, hash version 5. Nothing is bundled. |
+| Equipped weapon | TODO | Unknown | `0x80204B23` / `0x80204B21` were not verified. `0x80204B24` changes on C-left. Equip still goes through Roll's workshop list. | Not wired. |
+| Room or area id | TODO | Unknown | | Not wired. |
+| Player position | TODO | Unknown | | Not wired. |
+| Chest and door flags | TODO | Unknown | | Not wired. |
+| Item and chest tables | TODO | Unknown | | Not wired. |
+| Lock-on movement | TODO | Unknown | | Not wired. |
+| Save states | Not an address | Architecture | RDRAM alone is not a save state. | Not wired. |
+| Lights, outlines, CRT, shadows | Not in this RT64 pin | Renderer | | Not wired. |
 
 ## ROM scan notes
 

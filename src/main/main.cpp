@@ -713,6 +713,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(remaster_set_cutscene_active);
     REGISTER_FUNC(remaster_consume_cutscene_skip);
     REGISTER_FUNC(remaster_play_voice);
+    REGISTER_FUNC(remaster_text_pointer);
     REGISTER_FUNC(remaster_note_player);
     REGISTER_FUNC(remaster_note_player_ctx);
     REGISTER_FUNC(remaster_scale_damage);

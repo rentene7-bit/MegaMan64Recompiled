@@ -20,6 +20,13 @@ void expect(bool condition, const std::string& message) {
 } // namespace
 
 int run_idea_tests() {
+    expect(remaster::dialogue_glyph(0x30), "letter a is a dialogue glyph");
+    expect(remaster::dialogue_glyph(0x4F), "space is a dialogue glyph");
+    expect(!remaster::dialogue_glyph(0x01), "a low control byte is not a glyph");
+    const uint8_t upcoming[] = {0x30, 0x4F, 0x01};
+    expect(remaster::dialogue_extra_advance(upcoming, 3) == 2, "extra advance stops before a control byte");
+    expect(remaster::dialogue_extra_advance(upcoming + 2, 1) == 0, "a control byte is not consumed");
+
     remaster::set_difficulty(remaster::Difficulty::Easy);
     expect(remaster::damage_taken_q8() < 256, "easy reduces damage taken");
     expect(remaster::scale_damage_amount(false, true, 8) == 8, "damage stays put until the player is known");

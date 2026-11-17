@@ -216,6 +216,63 @@ std::vector<TexturePackCandidate> select_texture_packs(std::vector<TexturePackCa
     return chosen;
 }
 
+bool hash_named_texture(const std::filesystem::path& path, std::string& stem) {
+    const std::string name = path.filename().string();
+    const auto dot = name.find('.');
+    if (dot != 16) {
+        return false;
+    }
+    std::string ext = name.substr(dot);
+    for (char& ch : ext) {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    if (ext != ".png" && ext != ".dds") {
+        return false;
+    }
+    stem = name.substr(0, 16);
+    for (char& ch : stem) {
+        if (std::isxdigit(static_cast<unsigned char>(ch)) == 0) {
+            return false;
+        }
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return true;
+}
+
+/* RT64 binds a directory only through rt64.json. A folder of <16 hex>.png files
+ * has no database, so write one from the filenames. The images stay the user's. */
+void ensure_hash_pack_index(const std::filesystem::path& directory) {
+    std::error_code ec;
+    if (std::filesystem::exists(directory / "rt64.json", ec)) {
+        return;
+    }
+    std::string textures;
+    int count = 0;
+    for (std::filesystem::directory_iterator it(directory, ec), end; !ec && it != end && count < 4000; it.increment(ec)) {
+        if (!it->is_regular_file()) {
+            continue;
+        }
+        std::string stem;
+        if (!hash_named_texture(it->path(), stem)) {
+            continue;
+        }
+        if (!textures.empty()) {
+            textures += ",\n";
+        }
+        textures += "    {\"path\":\"" + it->path().filename().generic_string() + "\",\"hashes\":{\"rt64\":\"" + stem + "\",\"rice\":\"\"}}";
+        count++;
+    }
+    if (count == 0) {
+        return;
+    }
+    std::ofstream out(directory / "rt64.json", std::ios::binary);
+    out << "{\n  \"configuration\":{\"configurationVersion\":3,\"autoPath\":\"rt64\",\"defaultOperation\":\"stream\",\"defaultShift\":\"half\",\"hashVersion\":5},\n";
+    out << "  \"textures\":[\n" << textures << "\n  ]\n}\n";
+    if (out) {
+        g_pack_generation.fetch_add(1);
+    }
+}
+
 std::vector<std::filesystem::path> active_texture_pack_paths() {
     std::vector<TexturePackCandidate> found;
     const auto root = g_app_folder / "texture_packs";
@@ -233,6 +290,9 @@ std::vector<std::filesystem::path> active_texture_pack_paths() {
         const bool pack = std::filesystem::is_directory(path, ec) || ext == ".rtz" || ext == ".zip";
         if (!pack) {
             continue;
+        }
+        if (std::filesystem::is_directory(path, ec)) {
+            ensure_hash_pack_index(path);
         }
         TexturePackCandidate candidate;
         candidate.path = path;

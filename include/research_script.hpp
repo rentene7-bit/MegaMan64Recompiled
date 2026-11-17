@@ -28,6 +28,7 @@ struct Action {
         Screenshot,
         SetFb,
         Autostart,
+        Poke,
         Done,
         Skip,
         Fail
@@ -81,7 +82,7 @@ private:
         enum class Kind {
             Log, Timeout, Wait, Hold, Release, ReleaseAll, Press, Stick,
             WaitMem, RequireMem, Snapshot, Diff, DiffRange, Watch, Unwatch,
-            CallsStart, CallsStop, CallsDiff, Screenshot, SetFb, Echo, Autostart
+            CallsStart, CallsStop, CallsDiff, Screenshot, SetFb, Echo, Autostart, Poke
         } kind = Kind::Log;
         std::string text;
         std::string text2;

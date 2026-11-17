@@ -209,6 +209,13 @@ bool Script::run_instant(const Op& op, std::vector<Action>& out, bool& yielded) 
         action.width = op.width;
         out.push_back(action);
         return true;
+    case Op::Kind::Poke:
+        action.kind = Action::Kind::Poke;
+        action.address = op.address;
+        action.width = op.width;
+        action.value = op.length;
+        out.push_back(action);
+        return true;
     case Op::Kind::Autostart:
         autostart_ = true;
         action.kind = Action::Kind::Autostart;
@@ -355,6 +362,18 @@ bool Script::load(std::string_view text, std::string& error) {
             }
             op.kind = verb == "watch" ? Op::Kind::Watch : Op::Kind::Echo;
             op.text = words[3];
+        } else if (verb == "poke") {
+            if (!need(4)) {
+                error = "line " + std::to_string(line_no) + ": poke <u8|u16|u32> <addr> <value>";
+                return false;
+            }
+            const std::string width = lower_copy(words[1]);
+            op.width = width == "u32" ? 4 : width == "u16" ? 2 : width == "u8" ? 1 : 0;
+            if (op.width == 0 || !parse_u32(words[2], op.address) || !parse_u32(words[3], op.length)) {
+                error = "line " + std::to_string(line_no) + ": bad width, address or value";
+                return false;
+            }
+            op.kind = Op::Kind::Poke;
         } else if (verb == "calls_start") {
             op.kind = Op::Kind::CallsStart;
         } else if (verb == "set_fb") {

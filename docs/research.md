@@ -38,6 +38,8 @@ On Linux, export the same variables. `MM64R_AUTOSTART=1` starts the stored ROM w
 
 `MM64R_OUT` defaults to `research/out`. Each run appends to `session.log`.
 
+`MM64R_DUMP_TEXTURES` is read only by a research build. Set it to a directory and RT64 writes `<16 hex>.v5.tmem` files there. The submodule is not patched: after RT64 starts, the game assigns that directory on `Application::state`. A normal build ignores the variable.
+
 ## Script language
 
 One command per line. `#` starts a comment. Buttons are `A B Z START DUP DDOWN DLEFT DRIGHT L R CUP CDOWN CLEFT CRIGHT`. Stick values are about -128 to 127.
@@ -53,9 +55,10 @@ One command per line. `#` starts a comment. Buttons are `A B Z START DUP DDOWN D
 | `wait_u8/u16/u32 <addr> <op> <value>` | Block until the guest address matches. Ops: `eq ne lt gt le ge changed unchanged`. |
 | `require_u8/u16/u32 <addr> <op> <value>` | If it does not match on the next frame, log `SKIP` and stop. |
 | `echo <u8\|u16\|u32> <addr> <label>` | Log one value. |
+| `poke <u8\|u16\|u32> <addr> <value>` | Write one guest value. The address is sign-extended the same way the recompiler does, so `0x80xxxxxx` lands in RDRAM. |
 | `snapshot <name>` | Write an 8 MB RDRAM image to `snap_<name>.bin`. |
 | `diff <a> <b>` | Changed bytes between two snapshots, guest addresses, capped at 500 ranges. |
-| `diff_range <a> <b> <start> <length>` | Same, limited to a guest range. |
+| `diff_range <a> <b> <start> <length>` | Same, limited to a guest range. The file name gains `_<start>` so two ranges do not overwrite each other. |
 | `watch <u8\|u16\|u32> <addr> <label>` | Log later changes. |
 | `calls_start` / `calls_stop <label>` / `calls_diff <a> <b>` | Function-name sets. Empty until `trace_mode` is on. |
 | `screenshot <name>` | Window grab (`<name>_window.ppm`) plus, if `set_fb` was used, the N64 framebuffer (`<name>_fb.ppm`). |

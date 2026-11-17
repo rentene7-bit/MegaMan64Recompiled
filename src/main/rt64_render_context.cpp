@@ -15,6 +15,9 @@
 #include "recomp_ui.h"
 #include "remaster.hpp"
 #include "concurrentqueue.h"
+#ifdef MM64R_RESEARCH
+#include <cstdlib>
+#endif
 
 static RT64::UserConfiguration::Antialiasing device_max_msaa = RT64::UserConfiguration::Antialiasing::None;
 static bool sample_positions_supported = false;
@@ -294,6 +297,13 @@ zelda64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::rendere
     thread_id = window_handle.thread_id;
 #endif
     setup_result = map_setup_result(app->setup(thread_id));
+#ifdef MM64R_RESEARCH
+    if (const char* dump_dir = std::getenv("MM64R_DUMP_TEXTURES")) {
+        if (dump_dir[0] != '\0' && app->state != nullptr) {
+            app->state->dumpingTexturesDirectory = dump_dir;
+        }
+    }
+#endif
     // Get the API that RT64 chose.
     chosen_api = map_graphics_api(app->chosenGraphicsAPI);
     if (setup_result != ultramodern::renderer::SetupResult::Success) {

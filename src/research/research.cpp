@@ -75,12 +75,31 @@ bool read_mem(int width, uint32_t address, uint32_t& value) {
         return false;
     }
     uint8_t* rdram = g_rdram;
+    /* Guest addresses are signed MIPS words. A uint32_t 0x80xxxxxx sign-extends;
+     * passing it straight in makes the MEM macros land about 4 GB past RDRAM. */
+    const int64_t sa = static_cast<int64_t>(static_cast<int32_t>(address));
     if (width == 1) {
-        value = MEM_BU(0, address);
+        value = MEM_BU(0, sa);
     } else if (width == 2) {
-        value = MEM_HU(0, address);
+        value = MEM_HU(0, sa);
     } else {
-        value = static_cast<uint32_t>(MEM_W(0, address));
+        value = static_cast<uint32_t>(MEM_W(0, sa));
+    }
+    return true;
+}
+
+bool write_mem(int width, uint32_t address, uint32_t value) {
+    if (g_rdram == nullptr || !guest_ok(address, width)) {
+        return false;
+    }
+    uint8_t* rdram = g_rdram;
+    const int64_t sa = static_cast<int64_t>(static_cast<int32_t>(address));
+    if (width == 1) {
+        MEM_BU(0, sa) = static_cast<uint8_t>(value);
+    } else if (width == 2) {
+        MEM_HU(0, sa) = static_cast<uint16_t>(value);
+    } else {
+        MEM_W(0, sa) = static_cast<int32_t>(value);
     }
     return true;
 }
@@ -118,7 +137,11 @@ void write_diff(const std::string& name_a, const std::string& name_b, uint32_t s
         length = static_cast<uint32_t>(kRdramBytes);
     }
     const uint32_t last = start + std::min(length, static_cast<uint32_t>(0x80800000u - start));
-    std::ofstream out(g_out / ("diff_" + name_a + "_" + name_b + ".txt"));
+    char range_tag[24] = "";
+    if (start != 0x80000000u || length != static_cast<uint32_t>(kRdramBytes)) {
+        std::snprintf(range_tag, sizeof(range_tag), "_%08X", start);
+    }
+    std::ofstream out(g_out / ("diff_" + name_a + "_" + name_b + range_tag + ".txt"));
     int ranges = 0;
     uint32_t addr = start;
     while (addr < last && ranges < 500) {
@@ -390,6 +413,15 @@ void handle(const Action& action) {
         break;
     case Action::Kind::SetFb:
         log_line("framebuffer set");
+        break;
+    case Action::Kind::Poke:
+        if (write_mem(action.width, action.address, action.value)) {
+            char buf[96];
+            std::snprintf(buf, sizeof(buf), "poke u%d 0x%08X = %u", action.width * 8, action.address, action.value);
+            log_line(buf);
+        } else {
+            log_line("poke unavailable");
+        }
         break;
     case Action::Kind::Autostart:
         log_line("script requested autostart");
