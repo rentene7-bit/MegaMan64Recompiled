@@ -151,7 +151,9 @@ namespace recomp {
     extern const DefaultN64Mappings default_n64_keyboard_mappings;
     extern const DefaultN64Mappings default_n64_controller_mappings;
 
-    constexpr size_t bindings_per_input = 2;
+    // L and R each need three defaults: stick direction, shoulder, and the shared L2 lock-on.
+    // Saved configs with two bindings still load; the extra slot stays empty until a reset.
+    constexpr size_t bindings_per_input = 3;
 
     size_t get_num_inputs();
     const std::string& get_input_name(GameInput input);

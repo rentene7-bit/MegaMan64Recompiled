@@ -11,7 +11,10 @@
 #include "promptfont.h"
 #include "GamepadMotion.hpp"
 
-constexpr float axis_threshold = 0.5f;
+// Travel at which an analog axis bound as a button counts as pressed (right stick as
+// L/R, triggers as buttons, and while capturing a new binding). Menu stick repeat in
+// the config UI stays at its own 0.5 threshold.
+constexpr float axis_threshold = 0.35f;
 
 struct ControllerState {
     SDL_GameController* controller;
@@ -448,40 +451,56 @@ const recomp::DefaultN64Mappings recomp::default_n64_keyboard_mappings = {
     }
 };
 
+// Default pad layout for every controller. Saved controls.json entries replace this;
+// only a new install or Reset to defaults applies it.
+//
+// Z and L are both named "Strafe/Rotate L" in recomp_input.h, and R is "Strafe/Rotate R".
+// The public decomp does not contain the turn/lock-on function (only a few files are
+// decompiled), so this port's own labels are the check: Z is the left turn, the same
+// action as L, and lock-on is the left+right chord (Z+R on the original pad, L+R here).
+// Z is left unbound because L already covers that turn.
+//
+// One SDL button or axis may be listed under more than one N64 input. get_n64_input
+// ORs each GameInput on its own, so L2 (left trigger) under both L and R holds both
+// shoulders and is the one-button lock-on. There is no exclusivity check.
+//
+// Menu cancel was not found in the checked-in game code. C-Left is labeled "Special
+// Weapon" and C-Down "Interact". East is only C-Down, so a talk/cancel press does not
+// also fire the special weapon.
 const recomp::DefaultN64Mappings recomp::default_n64_controller_mappings = {
     .a = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_SOUTH},
     },
     .b = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_WEST},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERRIGHT + 1},
     },
     .l = {
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSTICK},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_RIGHTX + 1)},
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSHOULDER},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERLEFT + 1},
     },
     .r = {
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTX + 1},
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERLEFT + 1},
     },
     .z = {
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSHOULDER},
     },
     .start = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_START},
     },
     .c_left = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_NORTH},
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERRIGHT + 1},
     },
     .c_right = {
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTX + 1},
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_EAST},
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSTICK},
     },
     .c_up = {
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_RIGHTY + 1)},
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSTICK},
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSTICK},
     },
     .c_down = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_EAST},
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERLEFT + 1},
     },
     .dpad_left = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_DPAD_LEFT},
