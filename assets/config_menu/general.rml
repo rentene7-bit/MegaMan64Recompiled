@@ -56,7 +56,7 @@
                                 data-checked="background_input_mode"
                                 value="On"
                                 id="bg_input_enabled"
-                                style="nav-up: #joystick_deadzone_input; nav-down: #film_grain_mode_on"
+                                style="nav-up: #joystick_deadzone_input; nav-down: #ignore_keyboard_on"
                             />
                             <label class="config-option__tab-label" for="bg_input_enabled">On</label>
 
@@ -68,9 +68,39 @@
                                 data-checked="background_input_mode"
                                 value="Off"
                                 id="bg_input_disabled"
-                                style="nav-up: #joystick_deadzone_input; nav-down: #film_grain_mode_off"
+                                style="nav-up: #joystick_deadzone_input; nav-down: #ignore_keyboard_off"
                             />
                             <label class="config-option__tab-label" for="bg_input_disabled">Off</label>
+                        </div>
+                    </div>
+
+                    <!-- ignore keyboard (Steam Deck desktop layout doubles controller input as keys) -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(10)" id="conf-general__Ignore-Keyboard">
+                        <label class="config-option__title">Ignore Keyboard</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(10)"
+                                name="ignore_keyboard_input"
+                                data-checked="ignore_keyboard_input"
+                                value="On"
+                                id="ignore_keyboard_on"
+                                style="nav-up: #bg_input_enabled; nav-down: #invert_y_axis_mode_on"
+                            />
+                            <label class="config-option__tab-label" for="ignore_keyboard_on">On</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(10)"
+                                name="ignore_keyboard_input"
+                                data-checked="ignore_keyboard_input"
+                                value="Off"
+                                id="ignore_keyboard_off"
+                                style="nav-up: #bg_input_disabled; nav-down: #invert_y_axis_mode_off"
+                            />
+                            <label class="config-option__tab-label" for="ignore_keyboard_off">Off</label>
                         </div>
                     </div>
 
@@ -86,7 +116,7 @@
                                 data-checked="invert_y_axis_mode"
                                 value="On"
                                 id="invert_y_axis_mode_on"
-                                style="nav-up: #film_grain_mode_on;"
+                                style="nav-up: #ignore_keyboard_on;"
                             />
                             <label class="config-option__tab-label" for="invert_y_axis_mode_on">On</label>
 
@@ -98,7 +128,7 @@
                                 data-checked="invert_y_axis_mode"
                                 value="Off"
                                 id="invert_y_axis_mode_off"
-                                style="nav-up: #film_grain_mode_off;"
+                                style="nav-up: #ignore_keyboard_off;"
                             />
                             <label class="config-option__tab-label" for="invert_y_axis_mode_off">Off</label>
                         </div>
@@ -140,6 +170,12 @@
                     </p>
                     <p data-if="cur_config_index == 7">
                         Inverts the Y axis aiming controls. <b>On</b> is the default and matches the original game.
+                    </p>
+                    <p data-if="cur_config_index == 10">
+                        Ignores keyboard keys for gameplay and menus, including the fullscreen shortcut.
+                        Steam Deck Desktop Mode also turns the controller into keyboard keys, so the stick and face buttons are applied twice.
+                        Controller navigation still works, and this option can be switched off with the controller.
+                        <b>On</b> is the default when a Steam Deck is detected. Turn it off to use a keyboard.
                     </p>
                     <p data-if="cur_config_index == 8">
                         Alignment for Radio Communications Box.

@@ -195,6 +195,22 @@ namespace recomp {
     BackgroundInputMode get_background_input_mode();
     void set_background_input_mode(BackgroundInputMode mode);
 
+    // Drops keyboard gameplay bindings and menu keys. Controller input is unchanged.
+    // Defaults to On when a Steam Deck is detected and Off otherwise.
+    enum class IgnoreKeyboardInputMode {
+        On,
+        Off,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(recomp::IgnoreKeyboardInputMode, {
+        {recomp::IgnoreKeyboardInputMode::On, "On"},
+        {recomp::IgnoreKeyboardInputMode::Off, "Off"}
+    });
+
+    IgnoreKeyboardInputMode get_ignore_keyboard_input_mode();
+    void set_ignore_keyboard_input_mode(IgnoreKeyboardInputMode mode);
+
     bool game_input_disabled();
     bool all_input_disabled();
 }

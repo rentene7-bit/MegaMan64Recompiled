@@ -34,35 +34,47 @@ constexpr int ds_default              = 1;
 constexpr int rr_manual_default       = 60;
 constexpr bool developer_mode_default = false;
 
-static bool is_steam_deck = false;
-
-ultramodern::renderer::WindowMode wm_default() {
-    return is_steam_deck ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
+#ifdef __gnu_linux__
+static bool read_trimmed_line(const char* path, std::string& line) {
+    std::ifstream file{path};
+    if (!std::getline(file, line)) {
+        return false;
+    }
+    while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' ' || line.back() == '\t')) {
+        line.pop_back();
+    }
+    return true;
 }
 
-#ifdef __gnu_linux__
-void detect_steam_deck() {
-    // Check if the board vendor is Valve.
-    std::ifstream board_vendor_file("/sys/devices/virtual/dmi/id/board_vendor");
+static bool detect_steam_deck() {
     std::string line;
-    if (std::getline(board_vendor_file, line).good() && line == "Valve") {
-        is_steam_deck = true;
-        return;
+    // Real Deck hardware, including a native Desktop Mode launch that did not come from Steam.
+    if (read_trimmed_line("/sys/devices/virtual/dmi/id/board_vendor", line) && line == "Valve") {
+        return true;
+    }
+    // LCD boards are Jupiter; OLED boards are Galileo.
+    if (read_trimmed_line("/sys/devices/virtual/dmi/id/board_name", line) && (line == "Jupiter" || line == "Galileo")) {
+        return true;
     }
 
-    // Check if the SteamDeck variable is set to 1.
+    // Set by the Steam client for both Gaming Mode and Desktop Mode launches.
     const char* steam_deck_env = getenv("SteamDeck");
-    if (steam_deck_env != nullptr && std::string{steam_deck_env} == "1") {
-        is_steam_deck = true;
-        return;
-    }
-
-    is_steam_deck = false;
-    return;
+    return steam_deck_env != nullptr && std::string{steam_deck_env} == "1";
 }
 #else
-void detect_steam_deck() { is_steam_deck = false; }
+static bool detect_steam_deck() {
+    return false;
+}
 #endif
+
+bool zelda64::is_steam_deck() {
+    static const bool detected = detect_steam_deck();
+    return detected;
+}
+
+ultramodern::renderer::WindowMode wm_default() {
+    return zelda64::is_steam_deck() ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
+}
 
 template <typename T>
 T from_or_default(const json& j, const std::string& key, T default_value) {
@@ -237,6 +249,7 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["gyro_sensitivity"] = recomp::get_gyro_sensitivity();
     config_json["mouse_sensitivity"] = recomp::get_mouse_sensitivity();
     config_json["joystick_deadzone"] = recomp::get_joystick_deadzone();
+    recomp::to_json(config_json["ignore_keyboard_input"], recomp::get_ignore_keyboard_input_mode());
     config_json["analog_camera_invert_mode"] = zelda64::get_analog_camera_invert_mode();
     config_json["debug_mode"] = zelda64::get_debug_mode_enabled();
 
@@ -248,8 +261,13 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     recomp::set_background_input_mode(from_or_default(config_json, "background_input_mode", recomp::BackgroundInputMode::On));
     recomp::set_rumble_strength(from_or_default(config_json, "rumble_strength", 50));
     recomp::set_gyro_sensitivity(from_or_default(config_json, "gyro_sensitivity", 50));
-    recomp::set_mouse_sensitivity(from_or_default(config_json, "mouse_sensitivity", is_steam_deck ? 50 : 0));
+    recomp::set_mouse_sensitivity(from_or_default(config_json, "mouse_sensitivity", zelda64::is_steam_deck() ? 50 : 0));
     recomp::set_joystick_deadzone(from_or_default(config_json, "joystick_deadzone", 0));
+    recomp::set_ignore_keyboard_input_mode(from_or_default(
+        config_json,
+        "ignore_keyboard_input",
+        zelda64::is_steam_deck() ? recomp::IgnoreKeyboardInputMode::On : recomp::IgnoreKeyboardInputMode::Off
+    ));
     zelda64::set_analog_camera_invert_mode(from_or_default(config_json, "analog_camera_invert_mode", zelda64::AimInvertMode::On));
     zelda64::set_debug_mode_enabled(from_or_default(config_json, "debug_mode", false));
 }
@@ -472,7 +490,8 @@ bool load_sound_config(const std::filesystem::path& path) {
 }
 
 void zelda64::load_config() {
-    detect_steam_deck();
+    // Resolve detection before any Deck-specific default is applied.
+    (void)zelda64::is_steam_deck();
 
     std::filesystem::path recomp_dir = zelda64::get_app_folder_path();
     std::filesystem::path general_path = recomp_dir / general_filename;

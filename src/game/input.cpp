@@ -100,7 +100,27 @@ bool should_override_keystate(SDL_Scancode key, SDL_Keymod mod) {
     return false;        
 }
 
+static bool is_keyboard_event(Uint32 type) {
+    switch (type) {
+    case SDL_EventType::SDL_KEYDOWN:
+    case SDL_EventType::SDL_KEYUP:
+    case SDL_EventType::SDL_TEXTINPUT:
+    case SDL_EventType::SDL_TEXTEDITING:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool sdl_event_filter(void* userdata, SDL_Event* event) {
+    // Steam Desktop Mode turns Deck controls into keys on top of the SDL controller.
+    // Drop those keys for gameplay bindings and for menu navigation. Controller events
+    // still open the config menu and can turn this option back off.
+    if (recomp::get_ignore_keyboard_input_mode() == recomp::IgnoreKeyboardInputMode::On &&
+        is_keyboard_event(event->type)) {
+        return false;
+    }
+
     switch (event->type) {
     case SDL_EventType::SDL_KEYDOWN:
         {
@@ -608,9 +628,16 @@ float controller_axis_state(int32_t input_id, bool allow_suppression) {
     return false;
 }
 
+static bool keyboard_input_ignored() {
+    return recomp::get_ignore_keyboard_input_mode() == recomp::IgnoreKeyboardInputMode::On;
+}
+
 float recomp::get_input_analog(const recomp::InputField& field) {
     switch ((InputType)field.input_type) {
     case InputType::Keyboard:
+        if (keyboard_input_ignored()) {
+            return 0.0f;
+        }
         if (InputState.keys && field.input_id >= 0 && field.input_id < InputState.numkeys) {
             if (should_override_keystate(static_cast<SDL_Scancode>(field.input_id), InputState.keymod)) {
                 return 0.0f;
@@ -641,6 +668,9 @@ float recomp::get_input_analog(const std::span<const recomp::InputField> fields)
 bool recomp::get_input_digital(const recomp::InputField& field) {
     switch ((InputType)field.input_type) {
     case InputType::Keyboard:
+        if (keyboard_input_ignored()) {
+            return false;
+        }
         if (InputState.keys && field.input_id >= 0 && field.input_id < InputState.numkeys) {
             if (should_override_keystate(static_cast<SDL_Scancode>(field.input_id), InputState.keymod)) {
                 return false;
