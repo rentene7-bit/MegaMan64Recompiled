@@ -121,6 +121,11 @@ int run_idea_tests() {
     remaster::set_challenge_mask(0x5);
     expect(remaster::challenge_rank(600) > 0, "challenge rank uses the modifiers");
 
+    remaster::set_boss_rush(2);
+    expect(remaster::boss_rush_index() == 2, "boss rush remembers the selected rematch");
+    remaster::set_boss_rush(-1);
+    expect(remaster::boss_rush_index() == -1, "boss rush can be cleared");
+
     remaster::enter_photo_mode();
     expect(remaster::photo_mode(), "photo mode can start");
     remaster::exit_photo_mode();

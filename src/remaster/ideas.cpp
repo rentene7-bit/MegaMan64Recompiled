@@ -33,6 +33,7 @@ std::atomic<bool> g_wheel{false};
 std::atomic<bool> g_photo{false};
 std::atomic<bool> g_loading{false};
 std::atomic<uint32_t> g_challenges{0};
+std::atomic<int> g_boss{-1};
 
 std::string g_seed;
 std::string g_rom;
@@ -584,6 +585,8 @@ bool play_jukebox(int disc_index, int track) {
     return play_cdda_from(disc_index, track);
 }
 int unused_audio_count() { return disc::copy_report().unused_audio_hits + disc::copy_report_of(2).unused_audio_hits; }
+void set_boss_rush(int index) { g_boss.store(std::clamp(index, -1, 31)); }
+int boss_rush_index() { return g_boss.load(); }
 std::string version_audit() {
     const DiscReport primary = disc::copy_report();
     const DiscReport secondary = disc::copy_report_of(1);

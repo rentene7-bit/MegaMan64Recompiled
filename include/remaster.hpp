@@ -263,6 +263,8 @@ int music_layers(int intensity);
 int jukebox_track_count(int disc);
 bool play_jukebox(int disc, int track);
 int unused_audio_count();
+void set_boss_rush(int index);
+int boss_rush_index();
 std::string version_audit();
 bool snapshot_retry();
 
