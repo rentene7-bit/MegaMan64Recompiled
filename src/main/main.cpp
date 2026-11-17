@@ -35,6 +35,9 @@
 #include "zelda_support.h"
 #include "zelda_game.h"
 #include "recomp_data.h"
+#include "remaster.hpp"
+#include "remaster_ui.h"
+#include "remaster_api.h"
 #include "ovl_patches.hpp"
 #include "librecomp/game.hpp"
 #include "librecomp/mods.hpp"
@@ -142,7 +145,15 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     flags |= SDL_WINDOW_VULKAN;
 #endif
 
-    window = SDL_CreateWindow("Mega Man 64: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 960,  flags);
+    int window_width = 1600;
+    int window_height = 960;
+    SDL_Rect usable_bounds{};
+    if (SDL_GetDisplayUsableBounds(0, &usable_bounds) == 0) {
+        const remaster::WindowFit fit = remaster::fit_window_to_display(window_width, window_height, usable_bounds.w, usable_bounds.h);
+        window_width = fit.width;
+        window_height = fit.height;
+    }
+    window = SDL_CreateWindow(std::string(zelda64::program_name).c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height, flags);
 #if defined(__linux__)
     SetImageAsIcon("icons/512.png",window);
     if (ultramodern::renderer::get_graphics_config().wm_option == ultramodern::renderer::WindowMode::Fullscreen) { // TODO: Remove once RT64 gets native fullscreen support on Linux
@@ -174,6 +185,7 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 
 void update_gfx(void*) {
     recomp::handle_events();
+    remaster::tick_autosave();
 }
 
 static SDL_AudioCVT audio_convert;
@@ -243,9 +255,11 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     uint32_t num_bytes_to_queue = audio_convert.len_cvt - output_channels * discarded_output_frames * sizeof(swap_buffer[0]);
     float* samples_to_queue = swap_buffer.data() + output_channels * discarded_output_frames / 2;
 
-    // Prevent audio latency from building up by skipping samples in incoming audio when too many samples are already queued.
-    // Skip samples based on how many microseconds of samples are queued already.
-    uint32_t skip_factor = cur_queued_microseconds / 100000;
+    // Drop queued audio only after a larger backlog during a cutscene, where
+    // skipping samples is what pulls voices out of sync. The quieter threshold
+    // is the same on every machine.
+    const uint32_t skip_quantum = remaster::cutscene_active() ? 250000u : 150000u;
+    uint32_t skip_factor = cur_queued_microseconds / skip_quantum;
     if (skip_factor != 0) {
         uint32_t skip_ratio = 1 << skip_factor;
         num_bytes_to_queue /= skip_ratio;
@@ -253,6 +267,17 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
             samples_to_queue[2 * i + 0] = samples_to_queue[2 * skip_ratio * i + 0];
             samples_to_queue[2 * i + 1] = samples_to_queue[2 * skip_ratio * i + 1];
         }
+    }
+
+    if (output_channels == 2 && num_bytes_to_queue >= sizeof(float) * 2) {
+        const size_t mix_frames = num_bytes_to_queue / (sizeof(float) * 2);
+        if (remaster::voice_active()) {
+            for (size_t i = 0; i < mix_frames * 2; i++) {
+                samples_to_queue[i] *= 0.45f;
+            }
+        }
+        remaster::set_output_gain((zelda64::get_main_volume() / 100.0f) * (zelda64::get_voice_volume() / 100.0f));
+        remaster::mix_audio(samples_to_queue, mix_frames, output_sample_rate);
     }
 
     // Queue the swapped audio data.
@@ -651,6 +676,15 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_window_resolution);
     REGISTER_FUNC(recomp_get_target_aspect_ratio);
     REGISTER_FUNC(recomp_get_target_hud_aspect_ratio);
+    REGISTER_FUNC(remaster_patch_flags);
+    REGISTER_FUNC(remaster_fade_steps);
+    REGISTER_FUNC(remaster_bilerp_mode);
+    REGISTER_FUNC(remaster_adjust_fog);
+    REGISTER_FUNC(remaster_scale_projection);
+    REGISTER_FUNC(remaster_set_cutscene_active);
+    REGISTER_FUNC(remaster_consume_cutscene_skip);
+    REGISTER_FUNC(remaster_play_voice);
+    REGISTER_FUNC(recomp_get_camera_inputs);
     //REGISTER_FUNC(recomp_get_target_framerate);
     //REGISTER_FUNC(recomp_get_autosave_enabled);
     //REGISTER_FUNC(recomp_get_analog_cam_enabled);

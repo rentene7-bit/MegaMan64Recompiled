@@ -2,9 +2,13 @@
 #include "common_structs.h"
 #include "tag_helper.h"
 #include "gfx_patches.h"
+#include "graphics.h"
+#include "remaster_flags.h"
 
 bool skip_all_interpolation = FALSE;
 bool skip_terrain_interpolation = FALSE;
+static u32 s_remaster_flags = 0;
+static s32 s_force_fade_finish = 0;
 
 void recomp_check_camera_jump();
 
@@ -206,6 +210,7 @@ RECOMP_PATCH void func_800276EC_2AEC(s32 arg0) {
 
 
     sp14 = -1;
+    s_remaster_flags = remaster_patch_flags();
     D_801A53D8_1807D8 = 0;
     var_a2 = 0;
     if (arg0 < 2) {
@@ -225,20 +230,34 @@ RECOMP_PATCH void func_800276EC_2AEC(s32 arg0) {
         gEXEnable(D_801A90F0_1844F0++);
         gEXSetRDRAMExtended(D_801A90F0_1844F0++, TRUE);
         gEXSetRefreshRate(D_801A90F0_1844F0++, 30);
-        gEXForceTrueBilerp(D_801A90F0_1844F0++, G_EX_BILERP_ONLY);
+        gEXForceTrueBilerp(D_801A90F0_1844F0++, remaster_bilerp_mode());
         // recomp_printf("-----Begin Frame----- \n");
         //@recomp check if the camera has jumped this frame
         recomp_check_camera_jump();
         do {
             temp_v0 = gfxContext->fadeoutTimer;
             if (temp_v0 != 0) {
-                temp_a0_2 = gfxContext->rgba.c.a;
-                temp_a0_3 = temp_a0_2 + (((u8) gfxContext->primAlpha2 - temp_a0_2) / temp_v0);
-                gfxContext->rgba.c.a = temp_a0_3;
-                gfxContext->fadeoutTimer--;
-                if (!(gfxContext->fadeoutTimer & 0xFF) && (gfxContext->rgba.c.a >= 0xF1) && !(
-                        gfxContext->rgba.rgba32 & ~0xFF)) {
-                    func_80089EA0_652A0();
+                /* The original steps the fade once per frame. The remaster takes the same
+                 * curve and finishes it in fewer frames. One step matches the original. */
+                s32 fade_steps = remaster_fade_steps();
+                s32 step;
+                if (s_force_fade_finish) {
+                    fade_steps = 240;
+                    s_force_fade_finish = 0;
+                }
+                if (fade_steps < 1) {
+                    fade_steps = 1;
+                }
+                for (step = 0; step < fade_steps && gfxContext->fadeoutTimer != 0; step++) {
+                    temp_v0 = gfxContext->fadeoutTimer;
+                    temp_a0_2 = gfxContext->rgba.c.a;
+                    temp_a0_3 = temp_a0_2 + (((u8) gfxContext->primAlpha2 - temp_a0_2) / temp_v0);
+                    gfxContext->rgba.c.a = temp_a0_3;
+                    gfxContext->fadeoutTimer--;
+                    if (!(gfxContext->fadeoutTimer & 0xFF) && (gfxContext->rgba.c.a >= 0xF1) && !(
+                            gfxContext->rgba.rgba32 & ~0xFF)) {
+                        func_80089EA0_652A0();
+                    }
                 }
             }
             gfxContext++;
@@ -260,6 +279,13 @@ RECOMP_PATCH void func_800276EC_2AEC(s32 arg0) {
                     lry = D_800A6C9C_8209C;
                 }
                 gDPSetScissor(D_801A90F0_1844F0++, G_SC_NON_INTERLACE, ulx, uly, lrx, lry);
+                if ((s_remaster_flags & REMASTER_FLAG_WIDESCREEN) != 0) {
+                    float original_aspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT;
+                    float cur_aspect = recomp_get_target_aspect_ratio(original_aspect);
+                    if (cur_aspect > original_aspect + 0.02f) {
+                        gEXSetScissor(D_801A90F0_1844F0++, G_SC_NON_INTERLACE, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0, SCREEN_HEIGHT);
+                    }
+                }
                 if ((gfxContext->hiResEnabled != 0) && (D_800A6CA0_820A0 == 0)) {
                     zbuffer = D_801ADC84_189084;
                     width = D_800A6C9A_8209A - 1;
@@ -286,6 +312,7 @@ RECOMP_PATCH void func_800276EC_2AEC(s32 arg0) {
                 if (((viewport != NULL) & (mtxprojectionMtx != NULL)) && (identMtx != NULL)) {
                     memcpy(viewport, &gfxContext->viewport, 0x10);
                     memcpy(mtxprojectionMtx, &gfxContext->projectionMtx, 0x40);
+                    remaster_scale_projection(mtxprojectionMtx);
                     memcpy(identMtx, &gfxContext->identMtx, 0x40);
                     memcpy(&D_801AF370_18A770, &gfxContext->projectionMtx, 0x40);
 
@@ -294,7 +321,12 @@ RECOMP_PATCH void func_800276EC_2AEC(s32 arg0) {
                     gSPMatrix(D_801A90F0_1844F0++, mtxprojectionMtx, G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
                     gSPMatrix(D_801A90F0_1844F0++, identMtx, G_MTX_PROJECTION | G_MTX_MUL | G_MTX_NOPUSH);
 
-                    gSPFogPosition(D_801A90F0_1844F0++, gfxContext->fogStart, gfxContext->fogEnd);
+                    {
+                        s16 fog_start = gfxContext->fogStart;
+                        s16 fog_end = gfxContext->fogEnd;
+                        remaster_adjust_fog(&fog_start, &fog_end);
+                        gSPFogPosition(D_801A90F0_1844F0++, fog_start, fog_end);
+                    }
                     gDPSetFogColor(D_801A90F0_1844F0++, gfxContext->fogRed, gfxContext->fogGreen, gfxContext->fogBlue,
                                    gfxContext->fogAlpha);
 
@@ -389,12 +421,19 @@ RECOMP_PATCH void func_800276EC_2AEC(s32 arg0) {
 }
 
 void recomp_interp(u32 id) {
+    u32 tag = GET_TAG_ID(id);
     if (all_interpolation_skipped()) {
         gEXMatrixGroupSkipAll(D_801A90F0_1844F0++, G_EX_ID_IGNORE, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
         return;
     }
+    /* Effects and projectiles streak when their positions are interpolated. */
+    if ((s_remaster_flags & REMASTER_FLAG_PARTICLES) != 0 &&
+        (tag == EFFECT_TAG_ID || tag == PROJECT_TAG_ID || tag == PLAYER_PROJECT_TAG_ID)) {
+        gEXMatrixGroupSkipAll(D_801A90F0_1844F0++, G_EX_ID_IGNORE, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
+        return;
+    }
 
-    switch (GET_TAG_ID(id)) {
+    switch (tag) {
         case TERRAIN_TAG_ID:
             if (skip_terrain_interpolation) {
                 gEXMatrixGroupSkipAll(D_801A90F0_1844F0++, G_EX_ID_IGNORE, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
@@ -407,13 +446,24 @@ void recomp_interp(u32 id) {
             gEXMatrixGroupSkipAll(D_801A90F0_1844F0++, G_EX_ID_IGNORE, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
             break;
         default:
-            gEXMatrixGroupDecomposedNormal(D_801A90F0_1844F0++, id, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
+            if ((s_remaster_flags & REMASTER_FLAG_INTERPOLATION) != 0) {
+                gEXMatrixGroupDecomposedVertsOrderAuto(D_801A90F0_1844F0++, id, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
+            } else {
+                gEXMatrixGroupDecomposedNormal(D_801A90F0_1844F0++, id, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
+            }
     }
 }
 
 extern s32 D_801BC654_197A54; //Current Cutscene Pointer
 s32 sPreviousCutscene = NULL;
 void recomp_check_camera_jump() {
+    s32 cutscene_active = D_801BC654_197A54 != 0;
+    remaster_set_cutscene_active(cutscene_active);
+    if (cutscene_active && remaster_consume_cutscene_skip()) {
+        /* Finishes the fade that is already on screen. It does not advance the
+         * cutscene state machine; that call site is not identified yet. */
+        s_force_fade_finish = 1;
+    }
     if (D_801BC654_197A54 != sPreviousCutscene) {
         set_all_interpolation_skipped(TRUE);
     }

@@ -2,6 +2,7 @@
 
 #include "librecomp/helpers.hpp"
 #include "recomp_input.h"
+#include "remaster_ui.h"
 #include "ultramodern/ultramodern.hpp"
 
 // Arrays that hold the mappings for every input for keyboard and controller respectively.
@@ -106,7 +107,23 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
 
         cur_y = recomp::get_input_analog(keyboard_input_mappings[(size_t)GameInput::Y_AXIS_POS])
                 - recomp::get_input_analog(keyboard_input_mappings[(size_t)GameInput::Y_AXIS_NEG]) + joystick_y;
+
+        /* Right stick rotates the camera through the game's existing rotate buttons.
+         * The threshold is the same on every controller, so a light touch does not spin the view. */
+        float right_x = 0.0f;
+        float right_y = 0.0f;
+        recomp::get_right_analog(&right_x, &right_y);
+        constexpr float kCameraThreshold = 0.45f;
+        if (right_x <= -kCameraThreshold) {
+            cur_buttons |= 0x2000;
+        }
+        if (right_x >= kCameraThreshold) {
+            cur_buttons |= 0x0010;
+        }
+        (void)right_y;
     }
+
+    remaster_ui::on_game_buttons(cur_buttons);
 
     *buttons_out = cur_buttons;
     *x_out = std::clamp(cur_x, -1.0f, 1.0f);

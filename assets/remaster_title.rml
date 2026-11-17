@@ -1,0 +1,40 @@
+<rml>
+<head>
+    <title>Remaster</title>
+    <link type="text/rcss" href="rml.rcss"/>
+    <style>
+        body {
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0);
+            font-family: LatoLatin;
+        }
+        .remaster-title {
+            position: absolute;
+            top: 14%;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: #f4f7fb;
+        }
+        .remaster-title h1 {
+            font-size: 64dp;
+            font-weight: bold;
+            margin: 0;
+            color: #f4f7fb;
+        }
+        .remaster-title h2 {
+            font-size: 28dp;
+            margin-top: 8dp;
+            letter-spacing: 0.45em;
+            color: #3ee0ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="remaster-title">
+        <h1>Mega Man 64</h1>
+        <h2>REMASTER</h2>
+    </div>
+</body>
+</rml>

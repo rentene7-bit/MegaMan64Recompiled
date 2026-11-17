@@ -180,6 +180,12 @@ set (SOURCES
 #        ${CMAKE_SOURCE_DIR}/src/game/recomp_actor_api.cpp
         ${CMAKE_SOURCE_DIR}/src/game/recomp_data_api.cpp
         ${CMAKE_SOURCE_DIR}/src/game/rom_decompression.cpp
+        ${CMAKE_SOURCE_DIR}/src/game/remaster_api.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/remaster.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/disc.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/xa.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/audio.cpp
+        ${CMAKE_SOURCE_DIR}/src/ui/ui_remaster.cpp
 
         ${CMAKE_SOURCE_DIR}/src/ui/ui_renderer.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/ui_state.cpp
@@ -225,6 +231,7 @@ endif()
 
 target_include_directories(MegaMan64Recompiled PRIVATE
         ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src/remaster
         ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/N64Recomp/include
         ${CMAKE_SOURCE_DIR}/lib/concurrentqueue
         ${CMAKE_SOURCE_DIR}/lib/GamepadMotionHelpers

@@ -5,6 +5,7 @@
 #include "ultramodern/ultramodern.hpp"
 #include "RmlUi/Core.h"
 #include "nfd.h"
+#include "remaster_ui.h"
 #include <filesystem>
 
 static std::string version_string;
@@ -64,6 +65,7 @@ public:
     }
     void load_document() override {
 		launcher_context = recompui::create_context(zelda64::get_asset_path("launcher.rml"));
+        remaster_ui::init();
     }
     void register_events(recompui::UiEventListenerInstancer& listener) override {
         recompui::register_event(listener, "select_rom",
@@ -81,6 +83,7 @@ public:
             [](const std::string& param, Rml::Event& event) {
                 recomp::start_game(supported_games[0].game_id);
                 recompui::hide_all_contexts();
+                remaster_ui::show_title_overlay();
             }
         );
         recompui::register_event(listener, "open_controls",

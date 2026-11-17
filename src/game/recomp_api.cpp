@@ -216,6 +216,10 @@ extern "C" void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx) {
         *x_out = x_normalized * ((magnitude - radial_deadzone) / (1 - radial_deadzone));
         *y_out = y_normalized * ((magnitude - radial_deadzone) / (1 - radial_deadzone));
     }
+
+    if (zelda64::get_analog_camera_invert_mode() == zelda64::AimInvertMode::On) {
+        *y_out = -*y_out;
+    }
 }
 
 extern "C" void recomp_set_right_analog_suppressed(uint8_t* rdram, recomp_context* ctx) {

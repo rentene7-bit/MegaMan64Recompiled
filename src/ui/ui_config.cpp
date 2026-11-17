@@ -5,6 +5,7 @@
 #include "zelda_debug.h"
 #include "zelda_render.h"
 #include "zelda_support.h"
+#include "remaster.hpp"
 #include "promptfont.h"
 #include "ultramodern/config.hpp"
 #include "ultramodern/ultramodern.hpp"
@@ -564,6 +565,20 @@ public:
                 close_config_menu();
             });
 
+        recompui::register_event(listener, "select_ps1_disc",
+            [](const std::string&, Rml::Event&) {
+                zelda64::open_file_dialog([](bool success, const std::filesystem::path& path) {
+                    if (!success) {
+                        return;
+                    }
+                    remaster::set_disc_path(path);
+                    if (general_model_handle) {
+                        general_model_handle.DirtyVariable("remaster_disc_status");
+                    }
+                    zelda64::save_config();
+                });
+            });
+
         recompui::register_event(listener, "open_quit_game_prompt",
             [](const std::string& param, Rml::Event& event) {
                 zelda64::open_quit_game_prompt();
@@ -948,6 +963,43 @@ public:
         bind_option(constructor, "radio_comm_box_mode", &control_options_context.radio_comm_box_mode);
         bind_option(constructor, "invert_y_axis_mode", &control_options_context.invert_y_axis_mode);
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
+
+        constructor.BindFunc("remaster_disc_status",
+            [](Rml::Variant& out) { out = remaster::disc_report().summary; },
+            [](const Rml::Variant&) {});
+        constructor.BindFunc("remaster_draw_distance",
+            [](Rml::Variant& out) { out = std::string(remaster::draw_distance_name(remaster::draw_distance())); },
+            [](const Rml::Variant& in) {
+                remaster::set_draw_distance_name(in.Get<std::string>());
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("remaster_draw_distance");
+                }
+            });
+        constructor.BindFunc("remaster_texture_budget",
+            [](Rml::Variant& out) { out = std::string(remaster::texture_budget_name(remaster::texture_budget())); },
+            [](const Rml::Variant& in) {
+                remaster::set_texture_budget_name(in.Get<std::string>());
+                zelda64::renderer::trigger_texture_pack_update();
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("remaster_texture_budget");
+                }
+            });
+        constructor.BindFunc("remaster_ps1_music",
+            [](Rml::Variant& out) { out = std::string(remaster::ps1_music_enabled() ? "On" : "Off"); },
+            [](const Rml::Variant& in) {
+                remaster::set_ps1_music_enabled(in.Get<std::string>() == "On");
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("remaster_ps1_music");
+                }
+            });
+        constructor.BindFunc("remaster_cutscene_skip",
+            [](Rml::Variant& out) { out = std::string(remaster::cutscene_skip_enabled() ? "On" : "Off"); },
+            [](const Rml::Variant& in) {
+                remaster::set_cutscene_skip_enabled(in.Get<std::string>() == "On");
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("remaster_cutscene_skip");
+                }
+            });
 
         general_model_handle = constructor.GetModelHandle();
     }
