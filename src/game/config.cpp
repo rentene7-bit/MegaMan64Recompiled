@@ -279,6 +279,7 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["gyro_sensitivity"] = recomp::get_gyro_sensitivity();
     config_json["mouse_sensitivity"] = recomp::get_mouse_sensitivity();
     config_json["joystick_deadzone"] = recomp::get_joystick_deadzone();
+    config_json["invert_y_axis_mode"] = zelda64::get_invert_y_axis_mode();
     recomp::to_json(config_json["ignore_keyboard_input"], recomp::get_ignore_keyboard_input_mode());
     config_json["analog_camera_invert_mode"] = zelda64::get_analog_camera_invert_mode();
     config_json["debug_mode"] = zelda64::get_debug_mode_enabled();
@@ -291,8 +292,12 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     recomp::set_background_input_mode(from_or_default(config_json, "background_input_mode", recomp::BackgroundInputMode::On));
     recomp::set_rumble_strength(from_or_default(config_json, "rumble_strength", 50));
     recomp::set_gyro_sensitivity(from_or_default(config_json, "gyro_sensitivity", 50));
-    recomp::set_mouse_sensitivity(from_or_default(config_json, "mouse_sensitivity", zelda64::is_steam_deck() ? 50 : 0));
+    // Mouse aiming is not registered, so a non-zero value only grabs the cursor.
+    // Deck and desktop both default to 0; a saved number still wins.
+    recomp::set_mouse_sensitivity(from_or_default(config_json, "mouse_sensitivity", 0));
     recomp::set_joystick_deadzone(from_or_default(config_json, "joystick_deadzone", 0));
+    // Not read by the current build (the export is not registered). Off unless the file says otherwise.
+    zelda64::set_invert_y_axis_mode(from_or_default(config_json, "invert_y_axis_mode", zelda64::AimInvertMode::Off));
     recomp::set_ignore_keyboard_input_mode(from_or_default(
         config_json,
         "ignore_keyboard_input",
