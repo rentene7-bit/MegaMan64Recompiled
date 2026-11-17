@@ -170,8 +170,8 @@ std::filesystem::path zelda64::get_app_folder_path() {
    CoTaskMemFree(known_path);
 #elif defined(__linux__) || defined(__APPLE__)
    // check for APP_FOLDER_PATH env var
-   if (getenv("APP_FOLDER_PATH") != nullptr) {
-       return std::filesystem::path{getenv("APP_FOLDER_PATH")};
+   if (const char* app_folder = getenv("APP_FOLDER_PATH"); app_folder != nullptr && app_folder[0] != '\0') {
+       return std::filesystem::path{app_folder};
    }
 
 #if defined(__APPLE__)
@@ -181,19 +181,37 @@ std::filesystem::path zelda64::get_app_folder_path() {
    }
 #endif
 
-   const char *homedir;
-
-   if ((homedir = getenv("HOME")) == nullptr) {
-    #if defined(__linux__)
-       homedir = getpwuid(getuid())->pw_dir;
-    #elif defined(__APPLE__)
-        homedir = GetHomeDirectory();
-    #endif
+   const char* homedir = getenv("HOME");
+   if (homedir == nullptr) {
+#if defined(__linux__)
+       if (const struct passwd* pw = getpwuid(getuid()); pw != nullptr) {
+           homedir = pw->pw_dir;
+       }
+#elif defined(__APPLE__)
+       homedir = GetHomeDirectory();
+#endif
    }
 
+#if defined(__linux__)
+   // Honor XDG_CONFIG_HOME. If it points somewhere new but a config already exists in
+   // ~/.config, keep using that directory so existing saves are not orphaned.
+   std::filesystem::path legacy_dir;
+   if (homedir != nullptr) {
+       legacy_dir = std::filesystem::path{homedir} / ".config" / zelda64::program_id;
+   }
+   if (const char* xdg_config_home = getenv("XDG_CONFIG_HOME"); xdg_config_home != nullptr && xdg_config_home[0] != '\0') {
+       std::filesystem::path xdg_dir = std::filesystem::path{xdg_config_home} / zelda64::program_id;
+       if (xdg_dir != legacy_dir && !std::filesystem::exists(xdg_dir) && !legacy_dir.empty() && std::filesystem::exists(legacy_dir)) {
+           return legacy_dir;
+       }
+       return xdg_dir;
+   }
+   recomp_dir = legacy_dir;
+#else
    if (homedir != nullptr) {
        recomp_dir = std::filesystem::path{homedir} / (std::u8string{u8".config/"} + std::u8string{zelda64::program_id});
    }
+#endif
 #endif
 
     return recomp_dir;

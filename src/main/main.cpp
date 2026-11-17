@@ -142,7 +142,21 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     flags |= SDL_WINDOW_VULKAN;
 #endif
 
-    window = SDL_CreateWindow("Mega Man 64: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 960,  flags);
+    // 1600x960 is larger than the Steam Deck panel (1280x800, less once the desktop taskbar is reserved).
+    // Clamp to the usable bounds of the display the window is centered on. Larger displays are unchanged.
+    int window_width = 1600;
+    int window_height = 960;
+    SDL_Rect usable_bounds{};
+    if (SDL_GetDisplayUsableBounds(0, &usable_bounds) == 0) {
+        if (usable_bounds.w > 0 && window_width > usable_bounds.w) {
+            window_width = usable_bounds.w;
+        }
+        if (usable_bounds.h > 0 && window_height > usable_bounds.h) {
+            window_height = usable_bounds.h;
+        }
+    }
+
+    window = SDL_CreateWindow("Mega Man 64: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height, flags);
 #if defined(__linux__)
     SetImageAsIcon("icons/512.png",window);
     if (ultramodern::renderer::get_graphics_config().wm_option == ultramodern::renderer::WindowMode::Fullscreen) { // TODO: Remove once RT64 gets native fullscreen support on Linux
