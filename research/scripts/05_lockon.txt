@@ -1,0 +1,23 @@
+# Walk, then hold Z. Z is the bit this port already treats as a rotate/lock button.
+# Expected calls_diff_walk_locked.txt: functions only in the locked set are the
+# lock-on handler candidates. Do not patch from this file until a person has
+# felt the result. Position halfwords at player+0x14 should still change if
+# movement is allowed while Z is held; if they freeze, the stick is being eaten.
+
+timeout 300
+require_u16 0x80204A1E gt 0
+stick 0 70
+wait 60
+calls_start
+wait 30
+calls_stop walk
+stick 0 70
+hold Z
+calls_start
+wait 30
+calls_stop locked
+release Z
+stick 0 0
+calls_diff walk locked
+snapshot locked_end
+screenshot lockon

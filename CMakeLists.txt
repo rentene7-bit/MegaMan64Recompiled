@@ -45,6 +45,8 @@ set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
 add_compile_definitions(HLSL_CPU)
 
+option(MM64R_RESEARCH "Build the autopilot research harness. Leave OFF for release." OFF)
+
 if (RECOMP_FLATPAK)
     add_compile_definitions(RECOMP_FLATPAK)
 endif()
@@ -229,6 +231,12 @@ set (SOURCES
 
 if (APPLE)
     list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/main/support_apple.mm)
+endif()
+
+if (MM64R_RESEARCH)
+    list(APPEND SOURCES
+        ${CMAKE_SOURCE_DIR}/src/research/script.cpp
+        ${CMAKE_SOURCE_DIR}/src/research/research.cpp)
 endif()
 
 target_include_directories(MegaMan64Recompiled PRIVATE
@@ -443,5 +451,8 @@ endforeach()
 target_sources(MegaMan64Recompiled PRIVATE ${GENERATED_NRM_SOURCES})
 
 target_sources(MegaMan64Recompiled PRIVATE ${SOURCES})
+if (MM64R_RESEARCH)
+    target_compile_definitions(MegaMan64Recompiled PRIVATE MM64R_RESEARCH)
+endif()
 
 set_property(TARGET MegaMan64Recompiled PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

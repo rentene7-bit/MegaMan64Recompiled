@@ -17,6 +17,7 @@ uploads/
 # Generated from the user's ROM at runtime. Do not commit.
 texture_packs/
 generated/
+research/out/
 patches/patches.bin
 patches/*.o
 patches/*.d

@@ -1,0 +1,21 @@
+# Square walk so RT64 can see more textures. Before launching, turn on developer
+# mode and use the texture-replacement panel's "Start dumping textures" button.
+# Point it at research/out/textures. Dumped names look like
+# <16 hex digits>.v<version>.tmem plus .tile.json. The replacement filename is
+# the 16 hex digits with .png.
+# Expected: session.log ends with SCRIPT DONE, and the dump directory gains files
+# while the square runs. This script does not itself open the dump UI.
+
+timeout 300
+require_u16 0x80204A1E gt 0
+stick 0 90
+wait 120
+stick 90 0
+wait 120
+stick 0 -90
+wait 120
+stick -90 0
+wait 120
+stick 0 0
+screenshot texture_square
+log texture_walk_done

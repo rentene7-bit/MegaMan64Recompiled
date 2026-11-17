@@ -39,6 +39,9 @@
 #include "remaster.hpp"
 #include "remaster_ui.h"
 #include "remaster_api.h"
+#ifdef MM64R_RESEARCH
+#include "research.hpp"
+#endif
 #include "ovl_patches.hpp"
 #include "librecomp/game.hpp"
 #include "librecomp/mods.hpp"
@@ -167,6 +170,9 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     if (window == nullptr) {
         exit_error("Failed to create window: %s\n", SDL_GetError());
     }
+#ifdef MM64R_RESEARCH
+    mm64r::note_window(window);
+#endif
 
     SDL_SysWMinfo wmInfo;
     SDL_VERSION(&wmInfo.version);
@@ -181,6 +187,23 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     return ultramodern::renderer::WindowHandle{ wmInfo.info.cocoa.window,  SDL_Metal_GetLayer(view) };
 #else
     static_assert(false && "Unimplemented");
+#endif
+}
+
+#ifdef MM64R_RESEARCH
+extern std::vector<recomp::GameEntry> supported_games;
+#endif
+
+static void on_vi() {
+    recomp::update_rumble();
+#ifdef MM64R_RESEARCH
+    mm64r::on_vi();
+    if (mm64r::wants_autostart() && !ultramodern::is_game_started()) {
+        std::u8string game_id = supported_games[0].game_id;
+        if (recomp::is_rom_valid(game_id)) {
+            recomp::start_game(game_id);
+        }
+    }
 #endif
 }
 
@@ -740,7 +763,7 @@ int main(int argc, char** argv) {
     };
 
     ultramodern::events::callbacks_t thread_callbacks{
-        .vi_callback = recomp::update_rumble,
+        .vi_callback = on_vi,
         .gfx_init_callback = recompui::update_supported_options,
     };
 

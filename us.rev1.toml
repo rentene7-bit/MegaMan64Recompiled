@@ -1,4 +1,7 @@
 # Config file for MegaMan 64 Recompilation.
+# Call logging for the research harness: set trace_mode = true, rerun N64Recomp, and
+# configure with -DMM64R_RESEARCH=ON. Leave it false for a normal build.
+# trace_mode = true
 
 [input]
 entrypoint = 0x80025C00

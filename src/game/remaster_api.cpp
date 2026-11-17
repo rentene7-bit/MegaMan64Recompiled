@@ -2,6 +2,9 @@
 #include "librecomp/helpers.hpp"
 #include "recomp_ui.h"
 #include "remaster.hpp"
+#ifdef MM64R_RESEARCH
+#include "research.hpp"
+#endif
 
 #include <atomic>
 
@@ -62,6 +65,11 @@ extern "C" void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx) {
 }
 
 extern "C" void remaster_patch_flags(uint8_t* rdram, recomp_context* ctx) {
+#ifdef MM64R_RESEARCH
+    mm64r::note_rdram(rdram);
+#else
+    (void)rdram;
+#endif
     _return(ctx, remaster::patch_flags());
 }
 

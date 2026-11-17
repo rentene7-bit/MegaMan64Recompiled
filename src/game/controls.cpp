@@ -3,6 +3,9 @@
 #include "librecomp/helpers.hpp"
 #include "recomp_input.h"
 #include "remaster.hpp"
+#ifdef MM64R_RESEARCH
+#include "research.hpp"
+#endif
 #include "remaster_ui.h"
 #include "ultramodern/ultramodern.hpp"
 
@@ -147,6 +150,12 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
             cur_buttons = static_cast<uint16_t>((cur_buttons & ~0x2010u) | (rotate_left ? 0x0010u : 0) | (rotate_right ? 0x2000u : 0));
         }
     }
+
+#ifdef MM64R_RESEARCH
+    if (mm64r::script_active()) {
+        mm64r::apply_input(&cur_buttons, &cur_x, &cur_y);
+    }
+#endif
 
     remaster_ui::on_game_buttons(cur_buttons);
 

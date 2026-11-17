@@ -1,0 +1,32 @@
+# Run after 01, or any time the player is already in the field.
+# Opens the inventory (Start, per the manual) and taps C-left, which this
+# project's binding names "Special Weapon".
+# Expected research/out/diff_idle_inventory.txt and diff_idle_cleft.txt:
+#   a short list of guest addresses inside 0x802049B0..0x802059B0.
+# The equipped special-weapon byte is the one that changes on C-left and
+# changes back if the script's second C-left runs. Ownership bits at
+# 0x80205640 should stay put unless a weapon was actually granted.
+# If player_hp is 0 the script logs SKIP and stops.
+
+timeout 300
+require_u16 0x80204A1E gt 0
+echo u16 0x80204A1E player_hp
+watch u16 0x80205640 owned_weapons
+watch u8 0x80204E00 buster_part_0
+watch u16 0x80204EBA ammo_0
+snapshot idle
+press START 20
+wait 40
+snapshot inventory
+diff_range idle inventory 0x802049B0 0x1000
+press START 20
+wait 30
+press CLEFT 15
+wait 20
+snapshot cleft
+diff_range idle cleft 0x802049B0 0x1000
+press CLEFT 15
+wait 20
+snapshot cleft_again
+diff_range cleft cleft_again 0x802049B0 0x1000
+screenshot inventory_done
