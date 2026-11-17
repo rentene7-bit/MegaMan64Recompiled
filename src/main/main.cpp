@@ -73,7 +73,8 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) > 0) {
+    // SDL_Init returns 0 on success and a negative error code on failure.
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) < 0) {
         exit_error("Failed to initialize SDL2: %s\n", SDL_GetError());
     }
 
@@ -157,6 +158,10 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     }
 
     window = SDL_CreateWindow("Mega Man 64: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height, flags);
+    if (window == nullptr) {
+        exit_error("Failed to create window: %s\n", SDL_GetError());
+    }
+
 #if defined(__linux__)
     SetImageAsIcon("icons/512.png",window);
     if (ultramodern::renderer::get_graphics_config().wm_option == ultramodern::renderer::WindowMode::Fullscreen) { // TODO: Remove once RT64 gets native fullscreen support on Linux
@@ -165,10 +170,6 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
         SDL_SetWindowFullscreen(window,0);
     }
 #endif
-
-    if (window == nullptr) {
-        exit_error("Failed to create window: %s\n", SDL_GetError());
-    }
 
     SDL_SysWMinfo wmInfo;
     SDL_VERSION(&wmInfo.version);
@@ -260,6 +261,10 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     // Prevent audio latency from building up by skipping samples in incoming audio when too many samples are already queued.
     // Skip samples based on how many microseconds of samples are queued already.
     uint32_t skip_factor = cur_queued_microseconds / 100000;
+    // skip_ratio is 1 << skip_factor. Cap the shift so a stalled audio device cannot overflow it.
+    if (skip_factor > 16) {
+        skip_factor = 16;
+    }
     if (skip_factor != 0) {
         uint32_t skip_ratio = 1 << skip_factor;
         num_bytes_to_queue /= skip_ratio;

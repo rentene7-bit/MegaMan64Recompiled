@@ -33,8 +33,9 @@ namespace zelda64 {
             for (nfdpathsetsize_t i = 0; i < count; i++) {
                 nfdnchar_t* cur_path = nullptr;
                 nfdresult_t cur_result = NFD_PathSet_GetPathN(native_paths, i, &cur_path);
-                if (cur_result == NFD_OKAY) {
+                if (cur_result == NFD_OKAY && cur_path != nullptr) {
                     paths.emplace_back(std::filesystem::path{cur_path});
+                    NFD_FreePathN(cur_path);
                 }
             }
             NFD_PathSet_Free(native_paths);

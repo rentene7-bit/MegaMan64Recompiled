@@ -78,25 +78,33 @@ ultramodern::renderer::WindowMode wm_default() {
 
 template <typename T>
 T from_or_default(const json& j, const std::string& key, T default_value) {
-    T ret;
     auto find_it = j.find(key);
-    if (find_it != j.end()) {
-        find_it->get_to(ret);
-    }
-    else {
-        ret = default_value;
+    if (find_it == j.end()) {
+        return default_value;
     }
 
-    return ret;
+    try {
+        T ret;
+        find_it->get_to(ret);
+        return ret;
+    }
+    catch (const nlohmann::json::exception&) {
+        // A single mistyped value should not discard the rest of the file or abort startup.
+        return default_value;
+    }
 }
 
 template <typename T>
 void call_if_key_exists(void (*func)(T), const json& j, const std::string& key) {
     auto find_it = j.find(key);
     if (find_it != j.end()) {
-        T val;
-        find_it->get_to(val);
-        func(val);
+        try {
+            T val;
+            find_it->get_to(val);
+            func(val);
+        }
+        catch (const nlohmann::json::exception&) {
+        }
     }
 }
 
@@ -195,13 +203,17 @@ std::filesystem::path zelda64::get_app_folder_path() {
 #if defined(__linux__)
    // Honor XDG_CONFIG_HOME. If it points somewhere new but a config already exists in
    // ~/.config, keep using that directory so existing saves are not orphaned.
+   auto directory_exists = [](const std::filesystem::path& path) {
+       std::error_code ec;
+       return !path.empty() && std::filesystem::exists(path, ec);
+   };
    std::filesystem::path legacy_dir;
    if (homedir != nullptr) {
        legacy_dir = std::filesystem::path{homedir} / ".config" / zelda64::program_id;
    }
    if (const char* xdg_config_home = getenv("XDG_CONFIG_HOME"); xdg_config_home != nullptr && xdg_config_home[0] != '\0') {
        std::filesystem::path xdg_dir = std::filesystem::path{xdg_config_home} / zelda64::program_id;
-       if (xdg_dir != legacy_dir && !std::filesystem::exists(xdg_dir) && !legacy_dir.empty() && std::filesystem::exists(legacy_dir)) {
+       if (xdg_dir != legacy_dir && !directory_exists(xdg_dir) && directory_exists(legacy_dir)) {
            return legacy_dir;
        }
        return xdg_dir;
@@ -459,9 +471,24 @@ bool load_input_device_from_json(const nlohmann::json& config_json, recomp::Inpu
 
         // Deserialize all the bindings from the json array (up to the max number of bindings per input).
         for (size_t binding_index = 0; binding_index < std::min(recomp::bindings_per_input, input_json.size()); binding_index++) {
-            recomp::InputField cur_field{};
-            recomp::from_json(input_json[binding_index], cur_field);
-            recomp::set_input_binding(cur_input, binding_index, device, cur_field);
+            try {
+                recomp::InputField cur_field{};
+                recomp::from_json(input_json[binding_index], cur_field);
+                recomp::set_input_binding(cur_input, binding_index, device, cur_field);
+            }
+            catch (const nlohmann::json::exception&) {
+                assign_mapping(
+                    device,
+                    cur_input,
+                    recomp::get_default_mapping_for_input(
+                        device == recomp::InputDevice::Keyboard ?
+                        recomp::default_n64_keyboard_mappings :
+                        recomp::default_n64_controller_mappings,
+                        cur_input
+                    )
+                );
+                break;
+            }
         }
     }
 

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <mutex>
 
@@ -100,6 +101,16 @@ bool should_override_keystate(SDL_Scancode key, SDL_Keymod mod) {
     return false;        
 }
 
+// Caller must hold InputState.cur_controllers_mutex.
+static void close_controller_locked(SDL_GameController* controller) {
+    if (controller == nullptr) {
+        return;
+    }
+    auto& open_controllers = InputState.cur_controllers;
+    open_controllers.erase(std::remove(open_controllers.begin(), open_controllers.end(), controller), open_controllers.end());
+    SDL_GameControllerClose(controller);
+}
+
 static bool is_keyboard_event(Uint32 type) {
     switch (type) {
     case SDL_EventType::SDL_KEYDOWN:
@@ -153,12 +164,21 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
     case SDL_EventType::SDL_CONTROLLERDEVICEADDED:
         {
             SDL_ControllerDeviceEvent* controller_event = &event->cdevice;
+            // Open before taking the controller lock. SDL queues the resulting events instead of re-entering this filter.
             SDL_GameController* controller = SDL_GameControllerOpen(controller_event->which);
             printf("Controller added: %d\n", controller_event->which);
             if (controller != nullptr) {
-                printf("  Instance ID: %d\n", SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)));
-                ControllerState& state = InputState.controller_states[SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))];
-                state.controller = controller;
+                SDL_JoystickID instance_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller));
+                printf("  Instance ID: %d\n", instance_id);
+                {
+                    // poll_inputs reads this map from the game thread.
+                    std::lock_guard lock{ InputState.cur_controllers_mutex };
+                    ControllerState& state = InputState.controller_states[instance_id];
+                    if (state.controller != nullptr && state.controller != controller) {
+                        close_controller_locked(state.controller);
+                    }
+                    state.controller = controller;
+                }
 
                 if (SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_GYRO) && SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_ACCEL)) {
                     SDL_GameControllerSetSensorEnabled(controller, SDL_SensorType::SDL_SENSOR_GYRO, SDL_TRUE);
@@ -171,7 +191,14 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
         {
             SDL_ControllerDeviceEvent* controller_event = &event->cdevice;
             printf("Controller removed: %d\n", controller_event->which);
-            InputState.controller_states.erase(controller_event->which);
+            std::lock_guard lock{ InputState.cur_controllers_mutex };
+            auto it = InputState.controller_states.find(controller_event->which);
+            if (it != InputState.controller_states.end()) {
+                SDL_GameController* controller = it->second.controller;
+                it->second.controller = nullptr;
+                InputState.controller_states.erase(it);
+                close_controller_locked(controller);
+            }
         }
         break;
     case SDL_EventType::SDL_QUIT: {
@@ -254,37 +281,43 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
         }
         break;
     case SDL_EventType::SDL_CONTROLLERSENSORUPDATE:
-        if (event->csensor.sensor == SDL_SensorType::SDL_SENSOR_ACCEL) {
-            // Convert acceleration to g's.
-            float x = event->csensor.data[0] / SDL_STANDARD_GRAVITY;
-            float y = event->csensor.data[1] / SDL_STANDARD_GRAVITY;
-            float z = event->csensor.data[2] / SDL_STANDARD_GRAVITY;
-            ControllerState& state = InputState.controller_states[event->csensor.which];
-            state.latest_accelerometer[0] = x;
-            state.latest_accelerometer[1] = y;
-            state.latest_accelerometer[2] = z;
-        }
-        else if (event->csensor.sensor == SDL_SensorType::SDL_SENSOR_GYRO) {
-            // constexpr float gyro_threshold = 0.05f;
-            // Convert rotational velocity to degrees per second.
-            constexpr float rad_to_deg = 180.0f / M_PI;
-            float x = event->csensor.data[0] * rad_to_deg;
-            float y = event->csensor.data[1] * rad_to_deg;
-            float z = event->csensor.data[2] * rad_to_deg;
-            ControllerState& state = InputState.controller_states[event->csensor.which];
-            uint64_t cur_timestamp = event->csensor.timestamp;
-            uint32_t delta_ms = cur_timestamp - state.prev_gyro_timestamp;
-            state.motion.ProcessMotion(x, y, z, state.latest_accelerometer[0], state.latest_accelerometer[1], state.latest_accelerometer[2], delta_ms * 0.001f);
-            state.prev_gyro_timestamp = cur_timestamp;
+        {
+            std::lock_guard lock{ InputState.cur_controllers_mutex };
+            auto it = InputState.controller_states.find(event->csensor.which);
+            if (it == InputState.controller_states.end() || it->second.controller == nullptr) {
+                break;
+            }
+            ControllerState& state = it->second;
 
-            float rot_x = 0.0f;
-            float rot_y = 0.0f;
-            state.motion.GetPlayerSpaceGyro(rot_x, rot_y);
+            if (event->csensor.sensor == SDL_SensorType::SDL_SENSOR_ACCEL) {
+                // Convert acceleration to g's.
+                state.latest_accelerometer[0] = event->csensor.data[0] / SDL_STANDARD_GRAVITY;
+                state.latest_accelerometer[1] = event->csensor.data[1] / SDL_STANDARD_GRAVITY;
+                state.latest_accelerometer[2] = event->csensor.data[2] / SDL_STANDARD_GRAVITY;
+            }
+            else if (event->csensor.sensor == SDL_SensorType::SDL_SENSOR_GYRO) {
+                // constexpr float gyro_threshold = 0.05f;
+                // Convert rotational velocity to degrees per second.
+                constexpr float rad_to_deg = 180.0f / M_PI;
+                float x = event->csensor.data[0] * rad_to_deg;
+                float y = event->csensor.data[1] * rad_to_deg;
+                float z = event->csensor.data[2] * rad_to_deg;
+                uint32_t cur_timestamp = static_cast<uint32_t>(event->csensor.timestamp);
+                uint32_t delta_ms = cur_timestamp - state.prev_gyro_timestamp;
+                // The first sample has no previous timestamp, so its delta is the SDL clock and
+                // integrates a huge rotation. A long gap is a hitch or a resume, not real motion.
+                if (state.prev_gyro_timestamp != 0 && delta_ms <= 100) {
+                    state.motion.ProcessMotion(x, y, z, state.latest_accelerometer[0], state.latest_accelerometer[1], state.latest_accelerometer[2], delta_ms * 0.001f);
 
-            {
-                std::lock_guard lock{ InputState.pending_input_mutex };
-                InputState.pending_rotation_delta[0] += rot_x;
-                InputState.pending_rotation_delta[1] += rot_y;
+                    float rot_x = 0.0f;
+                    float rot_y = 0.0f;
+                    state.motion.GetPlayerSpaceGyro(rot_x, rot_y);
+
+                    std::lock_guard pending_lock{ InputState.pending_input_mutex };
+                    InputState.pending_rotation_delta[0] += rot_x;
+                    InputState.pending_rotation_delta[1] += rot_y;
+                }
+                state.prev_gyro_timestamp = cur_timestamp;
             }
         }
         break;
