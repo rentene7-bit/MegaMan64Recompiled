@@ -127,13 +127,19 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
             float gyro_y = 0.0f;
             recomp::get_gyro_deltas(&gyro_x, &gyro_y);
             gyro_x = remaster::soften_aim(gyro_x);
+            gyro_y = remaster::soften_aim(gyro_y);
             if (gyro_x <= -0.75f) {
                 cur_buttons |= 0x2000;
             }
             if (gyro_x >= 0.75f) {
                 cur_buttons |= 0x0010;
             }
-            (void)gyro_y;
+            /* C-right is the game's look button. While it is held, gyro moves the stick
+             * so look mode can aim. It does not replace the stick during normal movement. */
+            if ((cur_buttons & 0x0001u) != 0) {
+                cur_x = std::clamp(cur_x + gyro_x, -1.0f, 1.0f);
+                cur_y = std::clamp(cur_y + gyro_y, -1.0f, 1.0f);
+            }
         }
         if (remaster::one_handed()) {
             const uint16_t rotate_left = cur_buttons & 0x2000;

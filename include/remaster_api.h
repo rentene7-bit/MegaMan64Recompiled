@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-struct recomp_context;
+#include "recomp.h"
 
 extern "C" {
 void remaster_patch_flags(uint8_t* rdram, recomp_context* ctx);
@@ -14,6 +14,10 @@ void remaster_scale_projection(uint8_t* rdram, recomp_context* ctx);
 void remaster_set_cutscene_active(uint8_t* rdram, recomp_context* ctx);
 void remaster_consume_cutscene_skip(uint8_t* rdram, recomp_context* ctx);
 void remaster_play_voice(uint8_t* rdram, recomp_context* ctx);
+void remaster_note_player(uint8_t* rdram, recomp_context* ctx);
+void remaster_note_player_ctx(uint8_t* rdram, recomp_context* ctx);
+void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx);
+void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx);
 void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx);
 }
 

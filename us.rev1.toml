@@ -181,6 +181,29 @@ func = "func_8002E8FC_9CFC"
 before_vram = 0x8002ED7C
 text =	"rect_aspect_auto(rdram, ctx);"
 
+# Player object is a0. Record it and its live HP at +0x6E.
+[[patches.hook]]
+func = "func_80069A64_44E64"
+before_vram = 0x80069A64
+text = "remaster_note_player_ctx(rdram, ctx);"
+
+# Generic hurt: r16 is the victim, r17 is the damage after defense, HP is at +0x6E.
+[[patches.hook]]
+func = "func_8006E838_49C38"
+before_vram = 0x8006E9E0
+text = "remaster_scale_damage(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8006E838_49C38"
+before_vram = 0x8006EA04
+text = "remaster_scale_damage(rdram, ctx);"
+
+# Boss bar object is a0. The actor pointer is at +0x20 and that actor's HP is at +0x6E.
+[[patches.hook]]
+func = "func_80049948_24D48"
+before_vram = 0x80049948
+text = "remaster_note_boss_bar(rdram, ctx);"
+
 #Disable texture LOD
 [[patches.instruction]]
 func = "func_8003912C_1452C"

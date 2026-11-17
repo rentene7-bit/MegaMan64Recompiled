@@ -22,6 +22,14 @@ void expect(bool condition, const std::string& message) {
 int run_idea_tests() {
     remaster::set_difficulty(remaster::Difficulty::Easy);
     expect(remaster::damage_taken_q8() < 256, "easy reduces damage taken");
+    expect(remaster::scale_damage_amount(false, true, 8) == 8, "damage stays put until the player is known");
+    expect(remaster::scale_damage_amount(true, true, 8) == 6, "easy scales a player hit by three quarters");
+    expect(remaster::scale_damage_amount(true, true, 1) == 1, "a chip of damage is never scaled away");
+    expect(remaster::scale_damage_amount(true, false, 8) > 8, "easy raises damage dealt to other actors");
+    remaster::note_actor_hp(7, 40);
+    remaster::note_actor_hp(7, 25);
+    expect(remaster::actor_hp(7) == 25, "actor hp follows the later report");
+    expect(remaster::actor_max_hp(7) == 40, "actor max stays at the highest hp seen");
     remaster::set_new_game_plus(true);
     expect(remaster::damage_dealt_q8() > 256, "new game plus raises damage dealt");
     remaster::set_new_game_plus(false);
@@ -112,7 +120,8 @@ int run_idea_tests() {
     expect(remaster::shadows() == remaster::EffectLevel::Off, "shadows default off");
 
     remaster::set_enemy_hp(3, 5, 10);
-    expect(remaster::enemy_bar_count() == 1, "enemy bar accepts a report");
+    expect(remaster::actor_hp(3) == 5, "enemy bar stores the reported hp");
+    expect(remaster::enemy_bar_count() >= 1, "enemy bar accepts a report");
     remaster::unlock_achievement("first_gate");
     remaster::unlock_achievement("first_gate");
     expect(remaster::achievements_unlocked() == 1, "achievements unlock once");

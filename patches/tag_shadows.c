@@ -1,4 +1,5 @@
 #include "patches.h"
+#include "graphics.h"
 #include "common_structs.h"
 #include "tag_helper.h"
 #include "gfx_patches.h"
@@ -155,6 +156,7 @@ RECOMP_PATCH void func_8003B564_16964(NPCActor *arg0, s32 arg1, s32 arg2, s32 ar
 // push_player_shadow
 RECOMP_PATCH void func_8003B2B4_166B4(PlayerState *arg0, s32 arg1, s32 arg2, s32 arg3) {
     u16 var_a2;
+    remaster_note_player(arg0);
     s32 offset2;
     s32 offset;
     u32 shadowArraySize;

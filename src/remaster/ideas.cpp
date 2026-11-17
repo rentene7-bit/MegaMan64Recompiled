@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 
 namespace remaster {
@@ -46,7 +47,13 @@ std::vector<std::pair<std::string, bool>> g_quests;
 std::vector<std::string> g_missables_open;
 std::vector<std::string> g_achievements;
 std::vector<int> g_bestiary;
-std::vector<std::pair<int, int>> g_enemies;
+std::mutex g_actor_mu;
+struct ActorHp {
+    int id = 0;
+    int hp = 0;
+    int max_hp = 1;
+};
+std::vector<ActorHp> g_actors;
 std::vector<std::string> g_splits;
 std::vector<double> g_split_times;
 double g_run_seconds = 0;
@@ -125,6 +132,24 @@ int damage_dealt_q8() {
     if (difficulty() == Difficulty::Hard) dealt = 192;
     if (new_game_plus()) dealt += 64;
     return std::clamp(dealt, 64, 512);
+}
+
+int scale_damage_amount(bool known_victim, bool victim_is_player, int amount) {
+    if (!known_victim || amount == 0) {
+        return amount;
+    }
+    if (amount > 10000 || amount < -10000) {
+        return amount;
+    }
+    const int scale = victim_is_player ? damage_taken_q8() : damage_dealt_q8();
+    int scaled = static_cast<int>((static_cast<long long>(amount) * scale) >> 8);
+    if (amount > 0 && scaled < 1) {
+        scaled = 1;
+    }
+    if (amount < 0 && scaled > -1) {
+        scaled = -1;
+    }
+    return std::clamp(scaled, -32768, 32767);
 }
 
 void set_new_game_plus(bool enabled) { g_ng_plus.store(enabled); }
@@ -527,17 +552,63 @@ std::string input_display(uint16_t buttons) {
 std::string build_stamp() { return "Mega Man 64 Remaster"; }
 
 void set_enemy_hp(int id, int hp, int max_hp) {
-    for (auto& enemy : g_enemies) {
-        if (enemy.first == id) {
-            enemy.second = std::clamp(hp, 0, std::max(1, max_hp));
+    std::lock_guard<std::mutex> lock(g_actor_mu);
+    const int capped = std::clamp(hp, 0, std::max(1, max_hp));
+    for (ActorHp& actor : g_actors) {
+        if (actor.id == id) {
+            actor.hp = capped;
+            actor.max_hp = std::max(actor.max_hp, std::max(1, max_hp));
             return;
         }
     }
-    if (g_enemies.size() < 16) {
-        g_enemies.emplace_back(id, std::clamp(hp, 0, std::max(1, max_hp)));
+    if (g_actors.size() < 16) {
+        g_actors.push_back(ActorHp{id, capped, std::max(1, max_hp)});
     }
 }
-int enemy_bar_count() { return static_cast<int>(g_enemies.size()); }
+
+void note_actor_hp(int id, int hp) {
+    if (hp < 0 || hp > 9999) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_actor_mu);
+    for (ActorHp& actor : g_actors) {
+        if (actor.id == id) {
+            actor.hp = hp;
+            if (hp > actor.max_hp) {
+                actor.max_hp = hp;
+            }
+            return;
+        }
+    }
+    if (g_actors.size() < 16) {
+        g_actors.push_back(ActorHp{id, hp, std::max(hp, 1)});
+    }
+}
+
+int actor_hp(int id) {
+    std::lock_guard<std::mutex> lock(g_actor_mu);
+    for (const ActorHp& actor : g_actors) {
+        if (actor.id == id) {
+            return actor.hp;
+        }
+    }
+    return -1;
+}
+
+int actor_max_hp(int id) {
+    std::lock_guard<std::mutex> lock(g_actor_mu);
+    for (const ActorHp& actor : g_actors) {
+        if (actor.id == id) {
+            return actor.max_hp;
+        }
+    }
+    return -1;
+}
+
+int enemy_bar_count() {
+    std::lock_guard<std::mutex> lock(g_actor_mu);
+    return static_cast<int>(g_actors.size());
+}
 
 void unlock_achievement(const std::string& id) {
     if (id.empty()) return;

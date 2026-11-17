@@ -412,7 +412,7 @@ int zelda64::get_bgm_volume() {
     return sound_options_context.bgm_volume.load();
 }
 
-/*void zelda64::set_sfx_volume(int volume) {
+void zelda64::set_sfx_volume(int volume) {
     sound_options_context.sfx_volume.store(volume);
 	if (sound_options_model_handle) {
 		sound_options_model_handle.DirtyVariable("sfx_volume");
@@ -432,7 +432,7 @@ void zelda64::set_voice_volume(int volume) {
 
 int zelda64::get_voice_volume() {
     return sound_options_context.voice_volume.load();
-}*/
+}
 
 void zelda64::set_low_health_beeps_enabled(bool enabled) {
     sound_options_context.low_health_beeps_enabled.store((int)enabled);

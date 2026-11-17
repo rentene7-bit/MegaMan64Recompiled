@@ -125,6 +125,9 @@ const char* difficulty_name(Difficulty value);
 bool set_difficulty_name(const std::string& name);
 int damage_taken_q8();
 int damage_dealt_q8();
+/* Scales one hit. known_victim is false until the player object has been seen,
+ * so damage is left alone during boot. A positive hit never scales down to zero. */
+int scale_damage_amount(bool known_victim, bool victim_is_player, int amount);
 
 void set_new_game_plus(bool enabled);
 bool new_game_plus();
@@ -244,6 +247,9 @@ std::string input_display(uint16_t buttons);
 std::string build_stamp();
 
 void set_enemy_hp(int id, int hp, int max_hp);
+void note_actor_hp(int id, int hp);
+int actor_hp(int id);
+int actor_max_hp(int id);
 int enemy_bar_count();
 
 void unlock_achievement(const std::string& id);

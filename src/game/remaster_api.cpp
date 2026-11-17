@@ -3,6 +3,64 @@
 #include "recomp_ui.h"
 #include "remaster.hpp"
 
+#include <atomic>
+
+namespace {
+
+std::atomic<int32_t> g_player_guest{0};
+
+bool guest_ram(int32_t address) {
+    const uint32_t value = static_cast<uint32_t>(address);
+    return value >= 0x80000000u && value < 0x80800000u;
+}
+
+void remember_player(uint8_t* rdram, int32_t player) {
+    if (!guest_ram(player)) {
+        return;
+    }
+    g_player_guest.store(player);
+    const int hp = MEM_H(0x6E, player);
+    remaster::note_actor_hp(0, hp);
+}
+
+} // namespace
+
+extern "C" void remaster_note_player(uint8_t* rdram, recomp_context* ctx) {
+    remember_player(rdram, _arg<0, s32>(rdram, ctx));
+}
+
+extern "C" void remaster_note_player_ctx(uint8_t* rdram, recomp_context* ctx) {
+    remember_player(rdram, static_cast<int32_t>(ctx->r4));
+}
+
+extern "C" void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    const int32_t player = g_player_guest.load();
+    const int32_t victim = static_cast<int32_t>(ctx->r16);
+    const int32_t amount = static_cast<int32_t>(ctx->r17);
+    const bool known = guest_ram(player);
+    const bool is_player = known && victim == player;
+    const int scaled = remaster::scale_damage_amount(known, is_player, amount);
+    ctx->r17 = static_cast<gpr>(static_cast<int64_t>(scaled));
+}
+
+extern "C" void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx) {
+    const int32_t bar = static_cast<int32_t>(ctx->r4);
+    if (!guest_ram(bar)) {
+        return;
+    }
+    const int32_t actor = MEM_W(0x20, bar);
+    if (!guest_ram(actor)) {
+        return;
+    }
+    const int hp = MEM_H(0x6E, actor);
+    int id = static_cast<int>((static_cast<uint32_t>(actor) >> 4) & 0x7fffu);
+    if (id == 0) {
+        id = 1;
+    }
+    remaster::note_actor_hp(id, hp);
+}
+
 extern "C" void remaster_patch_flags(uint8_t* rdram, recomp_context* ctx) {
     _return(ctx, remaster::patch_flags());
 }
