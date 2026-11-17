@@ -201,6 +201,9 @@ int voice_disc_index();
 bool lock_on_move_enabled();
 void cycle_weapon(int delta);
 int weapon_slot();
+void note_equipped_weapon(int value);
+int take_equipped_weapon_write();
+const char* equipped_weapon_name(int value);
 bool weapon_wheel_open();
 void set_weapon_wheel_open(bool open);
 

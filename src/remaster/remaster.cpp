@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <utility>
+#include <vector>
 
 namespace remaster {
 namespace {
@@ -239,16 +241,34 @@ bool hash_named_texture(const std::filesystem::path& path, std::string& stem) {
     return true;
 }
 
-/* RT64 binds a directory only through rt64.json. A folder of <16 hex>.png files
- * has no database, so write one from the filenames. The images stay the user's. */
+/* Stream replacements are fetched after the first upload of a hash. A texture
+ * that is uploaded once stays on the native image if that fetch is cleared.
+ * Preload finishes the file before the display list continues, so the first
+ * upload already sees it. Writing the index must not bump the pack generation:
+ * this runs inside the load, and a bump reloads on the next frame and drops
+ * the in-flight request. */
+std::string hash_pack_index_text(const std::vector<std::pair<std::string, std::string>>& files) {
+    std::string textures;
+    for (const auto& file : files) {
+        if (!textures.empty()) {
+            textures += ",\n";
+        }
+        textures += "    {\"path\":\"" + file.first + "\",\"hashes\":{\"rt64\":\"" + file.second + "\",\"rice\":\"\"}}";
+    }
+    return "{\n  \"configuration\":{\"configurationVersion\":3,\"autoPath\":\"rt64\",\"defaultOperation\":\"preload\",\"defaultShift\":\"half\",\"hashVersion\":5},\n"
+        "  \"textures\":[\n" + textures + "\n  ]\n}\n";
+}
+
+bool generated_stream_index(const std::string& existing) {
+    return existing.find("operationFilters") == std::string::npos
+        && existing.find("\"hashVersion\":5") != std::string::npos
+        && existing.find("\"defaultOperation\":\"stream\"") != std::string::npos;
+}
+
 void ensure_hash_pack_index(const std::filesystem::path& directory) {
     std::error_code ec;
-    if (std::filesystem::exists(directory / "rt64.json", ec)) {
-        return;
-    }
-    std::string textures;
-    int count = 0;
-    for (std::filesystem::directory_iterator it(directory, ec), end; !ec && it != end && count < 4000; it.increment(ec)) {
+    std::vector<std::pair<std::string, std::string>> files;
+    for (std::filesystem::directory_iterator it(directory, ec), end; !ec && it != end && files.size() < 4000; it.increment(ec)) {
         if (!it->is_regular_file()) {
             continue;
         }
@@ -256,21 +276,23 @@ void ensure_hash_pack_index(const std::filesystem::path& directory) {
         if (!hash_named_texture(it->path(), stem)) {
             continue;
         }
-        if (!textures.empty()) {
-            textures += ",\n";
-        }
-        textures += "    {\"path\":\"" + it->path().filename().generic_string() + "\",\"hashes\":{\"rt64\":\"" + stem + "\",\"rice\":\"\"}}";
-        count++;
+        files.emplace_back(it->path().filename().generic_string(), stem);
     }
-    if (count == 0) {
+    if (files.empty()) {
         return;
     }
-    std::ofstream out(directory / "rt64.json", std::ios::binary);
-    out << "{\n  \"configuration\":{\"configurationVersion\":3,\"autoPath\":\"rt64\",\"defaultOperation\":\"stream\",\"defaultShift\":\"half\",\"hashVersion\":5},\n";
-    out << "  \"textures\":[\n" << textures << "\n  ]\n}\n";
-    if (out) {
-        g_pack_generation.fetch_add(1);
+    std::sort(files.begin(), files.end());
+    const std::string desired = hash_pack_index_text(files);
+    const auto index = directory / "rt64.json";
+    if (std::filesystem::exists(index, ec)) {
+        std::ifstream in(index, std::ios::binary);
+        const std::string existing((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (existing == desired || !generated_stream_index(existing)) {
+            return;
+        }
     }
+    std::ofstream out(index, std::ios::binary | std::ios::trunc);
+    out << desired;
 }
 
 std::vector<std::filesystem::path> active_texture_pack_paths() {

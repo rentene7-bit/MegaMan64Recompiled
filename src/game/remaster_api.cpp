@@ -24,6 +24,13 @@ void remember_player(uint8_t* rdram, int32_t player) {
     g_player_guest.store(player);
     const int hp = MEM_H(0x6E, player);
     remaster::note_actor_hp(0, hp);
+    /* Absolute address confirmed on pc1. 0 is Remove, 2 is Machine Buster. */
+    const int64_t equipped_at = static_cast<int64_t>(static_cast<int32_t>(0x80204B20));
+    const int pending = remaster::take_equipped_weapon_write();
+    if (pending >= 0 && pending <= 255) {
+        MEM_BU(0, equipped_at) = static_cast<uint8_t>(pending);
+    }
+    remaster::note_equipped_weapon(MEM_BU(0, equipped_at));
 }
 
 } // namespace

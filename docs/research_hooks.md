@@ -20,18 +20,18 @@ A PC port of Legends would still help. Shop prices, upgrade costs, and weapon st
 | Hook | Address or function | Status | What pc1 showed | Wired? |
 | --- | --- | --- | --- | --- |
 | Player object | `0x802049B0` | Confirmed | Stable across a new game. | Already used by the damage and HP hooks. |
-| Player HP | `0x80204A1E` (`player+0x6E`) u16 | Confirmed | 80 at new game. | Yes. Hurt scaling already reads this field. |
-| Zenny | `0x801BC406` | Confirmed | Matches the GameShark halfword. | No feature needs a write. Left as a known field. |
+| Player HP | `0x80204A1E` (`player+0x6E`) u16 | Confirmed | 80 at new game. A 100% Continue had 160. | Yes. Hurt scaling already reads this field. |
+| Zenny | `0x801BC406` | Confirmed | Matches the GameShark halfword. A 100% Continue had 10240. | No feature needs a write. Left as a known field. |
 | Play time | `0x801BC3F6` tick counter | Confirmed | Counts while the game runs. `0x801BC3F4` is the neighboring half. | Not wired. |
 | Buster part 0 | `0x80204E00` | Confirmed | The part byte, not the special weapon. | Not written. The wheel still must not poke it. |
-| Owned special weapons | `0x80205640` | Confirmed | `0x8000` is the buster only. `poke` of `0xFFFF` persists. Roll still equips. | Not written. Ownership is not the equipped weapon. |
+| Owned special weapons | `0x80205640` | Confirmed | `0x8000` is the buster only. `poke` of `0xFFFF` persists. Roll still equips. A 100% Continue had `0xBFFC`. | Not written. Ownership is not the equipped weapon. |
+| Equipped special weapon | `0x80204B20` u8, mirror `0x80204DFF` | Confirmed | On a 100% Continue this was 2, Machine Buster. Roll's Remove sets 0 and Equip sets 2. Poking 0, 2, 4, or 5 changes the HUD gauge and the arm model. `0x80204B21`, `0x80204B23`, and `0x80204B24` are not this byte. Other indexes were not named. | `[` and `]` write the next of 0, 2, 4, 5 only. 0 is shown as None and 2 as Machine Buster. 4 and 5 stay numbers. The mirror is not written. |
 | Ammo | `0x80204EBA`, stride 8 | Confirmed | The published ammo halfwords. | Not wired. No remaster behavior is "show this ammo" yet. |
-| Dialogue pointer | `0x801D8884`, duplicate `0x801D88DC` | Confirmed | Advances 1 byte per game tick. Buffer is near `0x802ECBB9`. `'a'` is `0x30`, space is `0x4F`. | Yes. `func_80061E44` is the `+0x14` add-1. `func_80061EC4` is the `+0x6C` add-1. Each then steps over up to two more bytes in `0x20..0x7E` and stops before anything else. |
+| Dialogue pointer | `0x801D8884`, duplicate `0x801D88DC` | Confirmed | Advances 1 byte per game tick. Buffer is near `0x802ECBB9`. `'a'` is `0x30`, space is `0x4F`. | `func_80061E44` and `func_80061EC4` are never called. The live step is `func_80064F40` at `0x80065068`: load `0x14($s0)`, add 1, store. The patch keeps that one byte, then steps over up to two more in `0x20..0x7E` and stops before any other byte. |
 | Dialogue start delay | `0x801D8874` u16, counts 5..1 | Confirmed | There is no separate text-speed variable. | Left at 5. It is the pause before the line, not the per-character rate. |
-| Texture hashes | `<16 hex>.v5.tmem` from `MM64R_DUMP_TEXTURES` | Confirmed | 1327 unique textures on an early-game walk. | Yes, for loading. A directory of `<16 hex>.png` or `.dds` under `texture_packs` gets an `rt64.json` built from those names, hash version 5. Nothing is bundled. |
-| Equipped weapon | TODO | Unknown | `0x80204B23` / `0x80204B21` were not verified. `0x80204B24` changes on C-left. Equip still goes through Roll's workshop list. | Not wired. |
+| Texture hashes | `<16 hex>.v5.tmem` from `MM64R_DUMP_TEXTURES` | Confirmed | 1327 unique textures on an early-game walk. A full pack replaced the corridor. A one- or three-hash pack was inconsistent. | Yes. The generated `rt64.json` uses `preload`, not `stream`. Stream applies after the first upload, and a second load on the next frame was clearing that request, so a texture uploaded once kept the native image. Preload finishes the file before the display list continues. An index this tree already wrote with `stream` is rewritten. A database with `operationFilters` is left alone. |
 | Room or area id | TODO | Unknown | | Not wired. |
-| Player position | TODO | Unknown | | Not wired. |
+| Player position | Probable | Not confirmed | s32 16.16 fixed X/Y/Z at `0x801DDEE0` / `0x801DDEE4` / `0x801DDEE8`. Mirrors `0x80135E08` and integer `0x801AD878`. | Not wired. |
 | Chest and door flags | TODO | Unknown | | Not wired. |
 | Item and chest tables | TODO | Unknown | | Not wired. |
 | Lock-on movement | TODO | Unknown | | Not wired. |

@@ -112,8 +112,17 @@ int run_idea_tests() {
     expect(remaster::build_stamp().find("Remaster") != std::string::npos, "build stamp says Remaster");
 
     expect(remaster::lock_on_move_enabled(), "lock-on movement stays available");
+    remaster::note_equipped_weapon(2);
+    expect(remaster::weapon_slot() == 2, "equipped weapon is recorded");
+    expect(std::string(remaster::equipped_weapon_name(2)) == "Machine Buster", "index 2 is the Machine Buster");
+    expect(std::string(remaster::equipped_weapon_name(0)) == "None", "index 0 is an empty equip");
+    expect(std::string(remaster::equipped_weapon_name(4)) == "4", "index 4 stays unnamed");
+    expect(std::string(remaster::equipped_weapon_name(7)) == "Unverified", "an untested index is not named");
     remaster::cycle_weapon(1);
-    expect(remaster::weapon_slot() == 1, "weapon wheel cycles");
+    expect(remaster::take_equipped_weapon_write() == 4, "the swap steps to the next verified index");
+    remaster::note_equipped_weapon(5);
+    remaster::cycle_weapon(1);
+    expect(remaster::take_equipped_weapon_write() == 0, "the verified list wraps");
     remaster::set_weapon_wheel_open(true);
     expect(remaster::weapon_wheel_open(), "weapon wheel can open");
 

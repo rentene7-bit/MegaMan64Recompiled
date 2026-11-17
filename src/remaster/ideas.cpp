@@ -30,6 +30,7 @@ std::atomic<int> g_crt{0};
 std::atomic<bool> g_seamless{false};
 std::atomic<int> g_upscale{1};
 std::atomic<int> g_weapon{0};
+std::atomic<int> g_weapon_write{-1};
 std::atomic<bool> g_wheel{false};
 std::atomic<bool> g_photo{false};
 std::atomic<bool> g_loading{false};
@@ -408,12 +409,51 @@ std::string audio_language_summary() {
 }
 
 bool lock_on_move_enabled() { return true; }
+
+/* pc1: 0 is Remove, 2 is Machine Buster, and 4 and 5 change the HUD and the
+ * arm. No other index has been verified, so the swap does not visit them. */
+constexpr int kVerifiedWeapons[] = {0, 2, 4, 5};
+
+int next_verified_weapon(int current, int delta) {
+    if (delta >= 0) {
+        for (int value : kVerifiedWeapons) {
+            if (value > current) {
+                return value;
+            }
+        }
+        return kVerifiedWeapons[0];
+    }
+    for (int i = 3; i >= 0; i--) {
+        if (kVerifiedWeapons[i] < current) {
+            return kVerifiedWeapons[i];
+        }
+    }
+    return kVerifiedWeapons[3];
+}
+
 void cycle_weapon(int delta) {
-    int slot = g_weapon.load() + delta;
-    while (slot < 0) slot += 8;
-    g_weapon.store(slot % 8);
+    const int next = next_verified_weapon(g_weapon.load(), delta);
+    g_weapon.store(next);
+    g_weapon_write.store(next);
 }
 int weapon_slot() { return g_weapon.load(); }
+void note_equipped_weapon(int value) {
+    if (value >= 0 && value <= 255) {
+        g_weapon.store(value);
+    }
+}
+int take_equipped_weapon_write() {
+    return g_weapon_write.exchange(-1);
+}
+const char* equipped_weapon_name(int value) {
+    switch (value) {
+    case 0: return "None";
+    case 2: return "Machine Buster";
+    case 4: return "4";
+    case 5: return "5";
+    default: return "Unverified";
+    }
+}
 bool weapon_wheel_open() { return g_wheel.load(); }
 void set_weapon_wheel_open(bool open) { g_wheel.store(open); }
 
