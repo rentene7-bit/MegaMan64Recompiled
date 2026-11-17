@@ -151,7 +151,9 @@ namespace recomp {
     extern const DefaultN64Mappings default_n64_keyboard_mappings;
     extern const DefaultN64Mappings default_n64_controller_mappings;
 
-    constexpr size_t bindings_per_input = 2;
+    // L and R each need three defaults: stick direction, shoulder, and the shared L2 lock-on.
+    // Saved configs with two bindings still load; the extra slot stays empty until a reset.
+    constexpr size_t bindings_per_input = 3;
 
     size_t get_num_inputs();
     const std::string& get_input_name(GameInput input);
@@ -194,6 +196,22 @@ namespace recomp {
 
     BackgroundInputMode get_background_input_mode();
     void set_background_input_mode(BackgroundInputMode mode);
+
+    // Drops keyboard gameplay bindings and menu keys. Controller input is unchanged.
+    // Defaults to On when a Steam Deck is detected and Off otherwise.
+    enum class IgnoreKeyboardInputMode {
+        On,
+        Off,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(recomp::IgnoreKeyboardInputMode, {
+        {recomp::IgnoreKeyboardInputMode::On, "On"},
+        {recomp::IgnoreKeyboardInputMode::Off, "Off"}
+    });
+
+    IgnoreKeyboardInputMode get_ignore_keyboard_input_mode();
+    void set_ignore_keyboard_input_mode(IgnoreKeyboardInputMode mode);
 
     bool game_input_disabled();
     bool all_input_disabled();

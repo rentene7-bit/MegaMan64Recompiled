@@ -27,7 +27,7 @@
 
     &--active {
         // while actively looking for inputs, set styles to the correct slots
-        $valid-binding-slots: 0, 1;
+        $valid-binding-slots: 0, 1, 2;
         @each $slot in $valid-binding-slots {
             // global attr -> this active row -> binding slot
             [cur-binding-slot="#{$slot}"] & .control-option__binding[bind-slot="#{$slot}"] {

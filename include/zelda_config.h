@@ -20,6 +20,9 @@ namespace zelda64 {
     void reset_single_input_binding(recomp::InputDevice device, recomp::GameInput input);
 
     std::filesystem::path get_app_folder_path();
+
+    // True on Steam Deck hardware (Valve DMI vendor or Jupiter/Galileo board) or when Steam sets SteamDeck=1.
+    bool is_steam_deck();
     
     bool get_debug_mode_enabled();
     void set_debug_mode_enabled(bool enabled);

@@ -34,57 +34,77 @@ constexpr int ds_default              = 1;
 constexpr int rr_manual_default       = 60;
 constexpr bool developer_mode_default = false;
 
-static bool is_steam_deck = false;
-
-ultramodern::renderer::WindowMode wm_default() {
-    return is_steam_deck ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
+#ifdef __gnu_linux__
+static bool read_trimmed_line(const char* path, std::string& line) {
+    std::ifstream file{path};
+    if (!std::getline(file, line)) {
+        return false;
+    }
+    while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' ' || line.back() == '\t')) {
+        line.pop_back();
+    }
+    return true;
 }
 
-#ifdef __gnu_linux__
-void detect_steam_deck() {
-    // Check if the board vendor is Valve.
-    std::ifstream board_vendor_file("/sys/devices/virtual/dmi/id/board_vendor");
+static bool detect_steam_deck() {
     std::string line;
-    if (std::getline(board_vendor_file, line).good() && line == "Valve") {
-        is_steam_deck = true;
-        return;
+    // Real Deck hardware, including a native Desktop Mode launch that did not come from Steam.
+    if (read_trimmed_line("/sys/devices/virtual/dmi/id/board_vendor", line) && line == "Valve") {
+        return true;
+    }
+    // LCD boards are Jupiter; OLED boards are Galileo.
+    if (read_trimmed_line("/sys/devices/virtual/dmi/id/board_name", line) && (line == "Jupiter" || line == "Galileo")) {
+        return true;
     }
 
-    // Check if the SteamDeck variable is set to 1.
+    // Set by the Steam client for both Gaming Mode and Desktop Mode launches.
     const char* steam_deck_env = getenv("SteamDeck");
-    if (steam_deck_env != nullptr && std::string{steam_deck_env} == "1") {
-        is_steam_deck = true;
-        return;
-    }
-
-    is_steam_deck = false;
-    return;
+    return steam_deck_env != nullptr && std::string{steam_deck_env} == "1";
 }
 #else
-void detect_steam_deck() { is_steam_deck = false; }
+static bool detect_steam_deck() {
+    return false;
+}
 #endif
+
+bool zelda64::is_steam_deck() {
+    static const bool detected = detect_steam_deck();
+    return detected;
+}
+
+ultramodern::renderer::WindowMode wm_default() {
+    return zelda64::is_steam_deck() ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
+}
 
 template <typename T>
 T from_or_default(const json& j, const std::string& key, T default_value) {
-    T ret;
     auto find_it = j.find(key);
-    if (find_it != j.end()) {
-        find_it->get_to(ret);
-    }
-    else {
-        ret = default_value;
+    if (find_it == j.end()) {
+        return default_value;
     }
 
-    return ret;
+    try {
+        T ret;
+        find_it->get_to(ret);
+        return ret;
+    }
+    catch (const nlohmann::json::exception&) {
+        // A single mistyped value should not discard the rest of the file or abort startup.
+        return default_value;
+    }
 }
 
 template <typename T>
 void call_if_key_exists(void (*func)(T), const json& j, const std::string& key) {
     auto find_it = j.find(key);
     if (find_it != j.end()) {
-        T val;
-        find_it->get_to(val);
-        func(val);
+        try {
+            T val;
+            find_it->get_to(val);
+            func(val);
+        }
+        catch (const nlohmann::json::exception&) {
+        }
     }
 }
 
@@ -158,8 +178,8 @@ std::filesystem::path zelda64::get_app_folder_path() {
    CoTaskMemFree(known_path);
 #elif defined(__linux__) || defined(__APPLE__)
    // check for APP_FOLDER_PATH env var
-   if (getenv("APP_FOLDER_PATH") != nullptr) {
-       return std::filesystem::path{getenv("APP_FOLDER_PATH")};
+   if (const char* app_folder = getenv("APP_FOLDER_PATH"); app_folder != nullptr && app_folder[0] != '\0') {
+       return std::filesystem::path{app_folder};
    }
 
 #if defined(__APPLE__)
@@ -169,19 +189,41 @@ std::filesystem::path zelda64::get_app_folder_path() {
    }
 #endif
 
-   const char *homedir;
-
-   if ((homedir = getenv("HOME")) == nullptr) {
-    #if defined(__linux__)
-       homedir = getpwuid(getuid())->pw_dir;
-    #elif defined(__APPLE__)
-        homedir = GetHomeDirectory();
-    #endif
+   const char* homedir = getenv("HOME");
+   if (homedir == nullptr) {
+#if defined(__linux__)
+       if (const struct passwd* pw = getpwuid(getuid()); pw != nullptr) {
+           homedir = pw->pw_dir;
+       }
+#elif defined(__APPLE__)
+       homedir = GetHomeDirectory();
+#endif
    }
 
+#if defined(__linux__)
+   // Honor XDG_CONFIG_HOME. If it points somewhere new but a config already exists in
+   // ~/.config, keep using that directory so existing saves are not orphaned.
+   auto directory_exists = [](const std::filesystem::path& path) {
+       std::error_code ec;
+       return !path.empty() && std::filesystem::exists(path, ec);
+   };
+   std::filesystem::path legacy_dir;
+   if (homedir != nullptr) {
+       legacy_dir = std::filesystem::path{homedir} / ".config" / zelda64::program_id;
+   }
+   if (const char* xdg_config_home = getenv("XDG_CONFIG_HOME"); xdg_config_home != nullptr && xdg_config_home[0] != '\0') {
+       std::filesystem::path xdg_dir = std::filesystem::path{xdg_config_home} / zelda64::program_id;
+       if (xdg_dir != legacy_dir && !directory_exists(xdg_dir) && directory_exists(legacy_dir)) {
+           return legacy_dir;
+       }
+       return xdg_dir;
+   }
+   recomp_dir = legacy_dir;
+#else
    if (homedir != nullptr) {
        recomp_dir = std::filesystem::path{homedir} / (std::u8string{u8".config/"} + std::u8string{zelda64::program_id});
    }
+#endif
 #endif
 
     return recomp_dir;
@@ -237,6 +279,8 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["gyro_sensitivity"] = recomp::get_gyro_sensitivity();
     config_json["mouse_sensitivity"] = recomp::get_mouse_sensitivity();
     config_json["joystick_deadzone"] = recomp::get_joystick_deadzone();
+    config_json["invert_y_axis_mode"] = zelda64::get_invert_y_axis_mode();
+    recomp::to_json(config_json["ignore_keyboard_input"], recomp::get_ignore_keyboard_input_mode());
     config_json["analog_camera_invert_mode"] = zelda64::get_analog_camera_invert_mode();
     config_json["debug_mode"] = zelda64::get_debug_mode_enabled();
 
@@ -248,8 +292,17 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     recomp::set_background_input_mode(from_or_default(config_json, "background_input_mode", recomp::BackgroundInputMode::On));
     recomp::set_rumble_strength(from_or_default(config_json, "rumble_strength", 50));
     recomp::set_gyro_sensitivity(from_or_default(config_json, "gyro_sensitivity", 50));
-    recomp::set_mouse_sensitivity(from_or_default(config_json, "mouse_sensitivity", is_steam_deck ? 50 : 0));
+    // Mouse aiming is not registered, so a non-zero value only grabs the cursor.
+    // Deck and desktop both default to 0; a saved number still wins.
+    recomp::set_mouse_sensitivity(from_or_default(config_json, "mouse_sensitivity", 0));
     recomp::set_joystick_deadzone(from_or_default(config_json, "joystick_deadzone", 0));
+    // Not read by the current build (the export is not registered). Off unless the file says otherwise.
+    zelda64::set_invert_y_axis_mode(from_or_default(config_json, "invert_y_axis_mode", zelda64::AimInvertMode::Off));
+    recomp::set_ignore_keyboard_input_mode(from_or_default(
+        config_json,
+        "ignore_keyboard_input",
+        zelda64::is_steam_deck() ? recomp::IgnoreKeyboardInputMode::On : recomp::IgnoreKeyboardInputMode::Off
+    ));
     zelda64::set_analog_camera_invert_mode(from_or_default(config_json, "analog_camera_invert_mode", zelda64::AimInvertMode::On));
     zelda64::set_debug_mode_enabled(from_or_default(config_json, "debug_mode", false));
 }
@@ -423,9 +476,24 @@ bool load_input_device_from_json(const nlohmann::json& config_json, recomp::Inpu
 
         // Deserialize all the bindings from the json array (up to the max number of bindings per input).
         for (size_t binding_index = 0; binding_index < std::min(recomp::bindings_per_input, input_json.size()); binding_index++) {
-            recomp::InputField cur_field{};
-            recomp::from_json(input_json[binding_index], cur_field);
-            recomp::set_input_binding(cur_input, binding_index, device, cur_field);
+            try {
+                recomp::InputField cur_field{};
+                recomp::from_json(input_json[binding_index], cur_field);
+                recomp::set_input_binding(cur_input, binding_index, device, cur_field);
+            }
+            catch (const nlohmann::json::exception&) {
+                assign_mapping(
+                    device,
+                    cur_input,
+                    recomp::get_default_mapping_for_input(
+                        device == recomp::InputDevice::Keyboard ?
+                        recomp::default_n64_keyboard_mappings :
+                        recomp::default_n64_controller_mappings,
+                        cur_input
+                    )
+                );
+                break;
+            }
         }
     }
 
@@ -472,7 +540,8 @@ bool load_sound_config(const std::filesystem::path& path) {
 }
 
 void zelda64::load_config() {
-    detect_steam_deck();
+    // Resolve detection before any Deck-specific default is applied.
+    (void)zelda64::is_steam_deck();
 
     std::filesystem::path recomp_dir = zelda64::get_app_folder_path();
     std::filesystem::path general_path = recomp_dir / general_filename;

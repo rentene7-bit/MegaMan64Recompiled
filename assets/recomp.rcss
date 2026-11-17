@@ -520,6 +520,15 @@ scrollbarhorizontal sliderbar {
 [cur-binding-slot="1"] .control-option--active .control-option__binding[bind-slot="1"] .control-option__binding-recording {
   opacity: 1;
 }
+[cur-binding-slot="2"] .control-option--active .control-option__binding[bind-slot="2"] {
+  border-color: #F86039;
+}
+[cur-binding-slot="2"] .control-option--active .control-option__binding[bind-slot="2"] .control-option__binding-icon {
+  opacity: 0;
+}
+[cur-binding-slot="2"] .control-option--active .control-option__binding[bind-slot="2"] .control-option__binding-recording {
+  opacity: 1;
+}
 .control-option .icon-button {
   flex: 1 1 auto;
 }

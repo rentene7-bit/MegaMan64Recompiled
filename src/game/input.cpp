@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <mutex>
 
@@ -10,7 +11,10 @@
 #include "promptfont.h"
 #include "GamepadMotion.hpp"
 
-constexpr float axis_threshold = 0.5f;
+// Travel at which an analog axis bound as a button counts as pressed (right stick as
+// L/R, triggers as buttons, and while capturing a new binding). Menu stick repeat in
+// the config UI stays at its own 0.5 threshold.
+constexpr float axis_threshold = 0.35f;
 
 struct ControllerState {
     SDL_GameController* controller;
@@ -100,7 +104,37 @@ bool should_override_keystate(SDL_Scancode key, SDL_Keymod mod) {
     return false;        
 }
 
+// Caller must hold InputState.cur_controllers_mutex.
+static void close_controller_locked(SDL_GameController* controller) {
+    if (controller == nullptr) {
+        return;
+    }
+    auto& open_controllers = InputState.cur_controllers;
+    open_controllers.erase(std::remove(open_controllers.begin(), open_controllers.end(), controller), open_controllers.end());
+    SDL_GameControllerClose(controller);
+}
+
+static bool is_keyboard_event(Uint32 type) {
+    switch (type) {
+    case SDL_EventType::SDL_KEYDOWN:
+    case SDL_EventType::SDL_KEYUP:
+    case SDL_EventType::SDL_TEXTINPUT:
+    case SDL_EventType::SDL_TEXTEDITING:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool sdl_event_filter(void* userdata, SDL_Event* event) {
+    // Steam Desktop Mode turns Deck controls into keys on top of the SDL controller.
+    // Drop those keys for gameplay bindings and for menu navigation. Controller events
+    // still open the config menu and can turn this option back off.
+    if (recomp::get_ignore_keyboard_input_mode() == recomp::IgnoreKeyboardInputMode::On &&
+        is_keyboard_event(event->type)) {
+        return false;
+    }
+
     switch (event->type) {
     case SDL_EventType::SDL_KEYDOWN:
         {
@@ -133,12 +167,21 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
     case SDL_EventType::SDL_CONTROLLERDEVICEADDED:
         {
             SDL_ControllerDeviceEvent* controller_event = &event->cdevice;
+            // Open before taking the controller lock. SDL queues the resulting events instead of re-entering this filter.
             SDL_GameController* controller = SDL_GameControllerOpen(controller_event->which);
             printf("Controller added: %d\n", controller_event->which);
             if (controller != nullptr) {
-                printf("  Instance ID: %d\n", SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)));
-                ControllerState& state = InputState.controller_states[SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))];
-                state.controller = controller;
+                SDL_JoystickID instance_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller));
+                printf("  Instance ID: %d\n", instance_id);
+                {
+                    // poll_inputs reads this map from the game thread.
+                    std::lock_guard lock{ InputState.cur_controllers_mutex };
+                    ControllerState& state = InputState.controller_states[instance_id];
+                    if (state.controller != nullptr && state.controller != controller) {
+                        close_controller_locked(state.controller);
+                    }
+                    state.controller = controller;
+                }
 
                 if (SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_GYRO) && SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_ACCEL)) {
                     SDL_GameControllerSetSensorEnabled(controller, SDL_SensorType::SDL_SENSOR_GYRO, SDL_TRUE);
@@ -151,7 +194,14 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
         {
             SDL_ControllerDeviceEvent* controller_event = &event->cdevice;
             printf("Controller removed: %d\n", controller_event->which);
-            InputState.controller_states.erase(controller_event->which);
+            std::lock_guard lock{ InputState.cur_controllers_mutex };
+            auto it = InputState.controller_states.find(controller_event->which);
+            if (it != InputState.controller_states.end()) {
+                SDL_GameController* controller = it->second.controller;
+                it->second.controller = nullptr;
+                InputState.controller_states.erase(it);
+                close_controller_locked(controller);
+            }
         }
         break;
     case SDL_EventType::SDL_QUIT: {
@@ -234,37 +284,43 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
         }
         break;
     case SDL_EventType::SDL_CONTROLLERSENSORUPDATE:
-        if (event->csensor.sensor == SDL_SensorType::SDL_SENSOR_ACCEL) {
-            // Convert acceleration to g's.
-            float x = event->csensor.data[0] / SDL_STANDARD_GRAVITY;
-            float y = event->csensor.data[1] / SDL_STANDARD_GRAVITY;
-            float z = event->csensor.data[2] / SDL_STANDARD_GRAVITY;
-            ControllerState& state = InputState.controller_states[event->csensor.which];
-            state.latest_accelerometer[0] = x;
-            state.latest_accelerometer[1] = y;
-            state.latest_accelerometer[2] = z;
-        }
-        else if (event->csensor.sensor == SDL_SensorType::SDL_SENSOR_GYRO) {
-            // constexpr float gyro_threshold = 0.05f;
-            // Convert rotational velocity to degrees per second.
-            constexpr float rad_to_deg = 180.0f / M_PI;
-            float x = event->csensor.data[0] * rad_to_deg;
-            float y = event->csensor.data[1] * rad_to_deg;
-            float z = event->csensor.data[2] * rad_to_deg;
-            ControllerState& state = InputState.controller_states[event->csensor.which];
-            uint64_t cur_timestamp = event->csensor.timestamp;
-            uint32_t delta_ms = cur_timestamp - state.prev_gyro_timestamp;
-            state.motion.ProcessMotion(x, y, z, state.latest_accelerometer[0], state.latest_accelerometer[1], state.latest_accelerometer[2], delta_ms * 0.001f);
-            state.prev_gyro_timestamp = cur_timestamp;
+        {
+            std::lock_guard lock{ InputState.cur_controllers_mutex };
+            auto it = InputState.controller_states.find(event->csensor.which);
+            if (it == InputState.controller_states.end() || it->second.controller == nullptr) {
+                break;
+            }
+            ControllerState& state = it->second;
 
-            float rot_x = 0.0f;
-            float rot_y = 0.0f;
-            state.motion.GetPlayerSpaceGyro(rot_x, rot_y);
+            if (event->csensor.sensor == SDL_SensorType::SDL_SENSOR_ACCEL) {
+                // Convert acceleration to g's.
+                state.latest_accelerometer[0] = event->csensor.data[0] / SDL_STANDARD_GRAVITY;
+                state.latest_accelerometer[1] = event->csensor.data[1] / SDL_STANDARD_GRAVITY;
+                state.latest_accelerometer[2] = event->csensor.data[2] / SDL_STANDARD_GRAVITY;
+            }
+            else if (event->csensor.sensor == SDL_SensorType::SDL_SENSOR_GYRO) {
+                // constexpr float gyro_threshold = 0.05f;
+                // Convert rotational velocity to degrees per second.
+                constexpr float rad_to_deg = 180.0f / M_PI;
+                float x = event->csensor.data[0] * rad_to_deg;
+                float y = event->csensor.data[1] * rad_to_deg;
+                float z = event->csensor.data[2] * rad_to_deg;
+                uint32_t cur_timestamp = static_cast<uint32_t>(event->csensor.timestamp);
+                uint32_t delta_ms = cur_timestamp - state.prev_gyro_timestamp;
+                // The first sample has no previous timestamp, so its delta is the SDL clock and
+                // integrates a huge rotation. A long gap is a hitch or a resume, not real motion.
+                if (state.prev_gyro_timestamp != 0 && delta_ms <= 100) {
+                    state.motion.ProcessMotion(x, y, z, state.latest_accelerometer[0], state.latest_accelerometer[1], state.latest_accelerometer[2], delta_ms * 0.001f);
 
-            {
-                std::lock_guard lock{ InputState.pending_input_mutex };
-                InputState.pending_rotation_delta[0] += rot_x;
-                InputState.pending_rotation_delta[1] += rot_y;
+                    float rot_x = 0.0f;
+                    float rot_y = 0.0f;
+                    state.motion.GetPlayerSpaceGyro(rot_x, rot_y);
+
+                    std::lock_guard pending_lock{ InputState.pending_input_mutex };
+                    InputState.pending_rotation_delta[0] += rot_x;
+                    InputState.pending_rotation_delta[1] += rot_y;
+                }
+                state.prev_gyro_timestamp = cur_timestamp;
             }
         }
         break;
@@ -395,40 +451,56 @@ const recomp::DefaultN64Mappings recomp::default_n64_keyboard_mappings = {
     }
 };
 
+// Default pad layout for every controller. Saved controls.json entries replace this;
+// only a new install or Reset to defaults applies it.
+//
+// Z and L are both named "Strafe/Rotate L" in recomp_input.h, and R is "Strafe/Rotate R".
+// The public decomp does not contain the turn/lock-on function (only a few files are
+// decompiled), so this port's own labels are the check: Z is the left turn, the same
+// action as L, and lock-on is the left+right chord (Z+R on the original pad, L+R here).
+// Z is left unbound because L already covers that turn.
+//
+// One SDL button or axis may be listed under more than one N64 input. get_n64_input
+// ORs each GameInput on its own, so L2 (left trigger) under both L and R holds both
+// shoulders and is the one-button lock-on. There is no exclusivity check.
+//
+// Menu cancel was not found in the checked-in game code. C-Left is labeled "Special
+// Weapon" and C-Down "Interact". East is only C-Down, so a talk/cancel press does not
+// also fire the special weapon.
 const recomp::DefaultN64Mappings recomp::default_n64_controller_mappings = {
     .a = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_SOUTH},
     },
     .b = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_WEST},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERRIGHT + 1},
     },
     .l = {
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSTICK},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_RIGHTX + 1)},
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSHOULDER},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERLEFT + 1},
     },
     .r = {
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTX + 1},
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERLEFT + 1},
     },
     .z = {
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSHOULDER},
     },
     .start = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_START},
     },
     .c_left = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_NORTH},
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERRIGHT + 1},
     },
     .c_right = {
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTX + 1},
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_EAST},
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSTICK},
     },
     .c_up = {
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_RIGHTY + 1)},
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSTICK},
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSTICK},
     },
     .c_down = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_EAST},
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERLEFT + 1},
     },
     .dpad_left = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_DPAD_LEFT},
@@ -608,9 +680,16 @@ float controller_axis_state(int32_t input_id, bool allow_suppression) {
     return false;
 }
 
+static bool keyboard_input_ignored() {
+    return recomp::get_ignore_keyboard_input_mode() == recomp::IgnoreKeyboardInputMode::On;
+}
+
 float recomp::get_input_analog(const recomp::InputField& field) {
     switch ((InputType)field.input_type) {
     case InputType::Keyboard:
+        if (keyboard_input_ignored()) {
+            return 0.0f;
+        }
         if (InputState.keys && field.input_id >= 0 && field.input_id < InputState.numkeys) {
             if (should_override_keystate(static_cast<SDL_Scancode>(field.input_id), InputState.keymod)) {
                 return 0.0f;
@@ -641,6 +720,9 @@ float recomp::get_input_analog(const std::span<const recomp::InputField> fields)
 bool recomp::get_input_digital(const recomp::InputField& field) {
     switch ((InputType)field.input_type) {
     case InputType::Keyboard:
+        if (keyboard_input_ignored()) {
+            return false;
+        }
         if (InputState.keys && field.input_id >= 0 && field.input_id < InputState.numkeys) {
             if (should_override_keystate(static_cast<SDL_Scancode>(field.input_id), InputState.keymod)) {
                 return false;

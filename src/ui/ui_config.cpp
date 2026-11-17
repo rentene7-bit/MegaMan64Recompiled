@@ -1,3 +1,5 @@
+#include <atomic>
+
 #include "recomp_ui.h"
 #include "recomp_input.h"
 #include "zelda_sound.h"
@@ -244,6 +246,11 @@ struct ControlOptionsContext {
 
 ControlOptionsContext control_options_context;
 
+// Read from the game thread and written from the UI thread.
+static std::atomic<recomp::IgnoreKeyboardInputMode> ignore_keyboard_input_mode{
+    recomp::IgnoreKeyboardInputMode::Off
+};
+
 int recomp::get_rumble_strength() {
     return control_options_context.rumble_strength;
 }
@@ -314,6 +321,17 @@ void recomp::set_background_input_mode(recomp::BackgroundInputMode mode) {
             ? "1"
             : "0"
     );
+}
+
+recomp::IgnoreKeyboardInputMode recomp::get_ignore_keyboard_input_mode() {
+    return ignore_keyboard_input_mode.load(std::memory_order_relaxed);
+}
+
+void recomp::set_ignore_keyboard_input_mode(recomp::IgnoreKeyboardInputMode mode) {
+    ignore_keyboard_input_mode.store(mode, std::memory_order_relaxed);
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("ignore_keyboard_input");
+    }
 }
 
 zelda64::FilmGrainMode zelda64::get_film_grain_mode() {
@@ -944,6 +962,17 @@ public:
         constructor.Bind("joystick_deadzone", &control_options_context.joystick_deadzone);
         bind_option(constructor, "targeting_mode", &control_options_context.targeting_mode);
         bind_option(constructor, "background_input_mode", &control_options_context.background_input_mode);
+        constructor.BindFunc("ignore_keyboard_input",
+            [](Rml::Variant& out) {
+                recomp::IgnoreKeyboardInputMode mode = recomp::get_ignore_keyboard_input_mode();
+                get_option(mode, out);
+            },
+            [](const Rml::Variant& in) {
+                recomp::IgnoreKeyboardInputMode mode = recomp::IgnoreKeyboardInputMode::OptionCount;
+                set_option(mode, in);
+                recomp::set_ignore_keyboard_input_mode(mode);
+            }
+        );
         bind_option(constructor, "film_grain_mode", &control_options_context.film_grain_mode);
         bind_option(constructor, "radio_comm_box_mode", &control_options_context.radio_comm_box_mode);
         bind_option(constructor, "invert_y_axis_mode", &control_options_context.invert_y_axis_mode);

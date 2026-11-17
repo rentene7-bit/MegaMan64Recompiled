@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cassert>
+#include <cctype>
 #include <unordered_map>
 #include <vector>
 #include <array>
@@ -73,7 +74,8 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) > 0) {
+    // SDL_Init returns 0 on success and a negative error code on failure.
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) < 0) {
         exit_error("Failed to initialize SDL2: %s\n", SDL_GetError());
     }
 
@@ -142,7 +144,25 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     flags |= SDL_WINDOW_VULKAN;
 #endif
 
-    window = SDL_CreateWindow("Mega Man 64: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 960,  flags);
+    // 1600x960 is larger than the Steam Deck panel (1280x800, less once the desktop taskbar is reserved).
+    // Clamp to the usable bounds of the display the window is centered on. Larger displays are unchanged.
+    int window_width = 1600;
+    int window_height = 960;
+    SDL_Rect usable_bounds{};
+    if (SDL_GetDisplayUsableBounds(0, &usable_bounds) == 0) {
+        if (usable_bounds.w > 0 && window_width > usable_bounds.w) {
+            window_width = usable_bounds.w;
+        }
+        if (usable_bounds.h > 0 && window_height > usable_bounds.h) {
+            window_height = usable_bounds.h;
+        }
+    }
+
+    window = SDL_CreateWindow("Mega Man 64: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height, flags);
+    if (window == nullptr) {
+        exit_error("Failed to create window: %s\n", SDL_GetError());
+    }
+
 #if defined(__linux__)
     SetImageAsIcon("icons/512.png",window);
     if (ultramodern::renderer::get_graphics_config().wm_option == ultramodern::renderer::WindowMode::Fullscreen) { // TODO: Remove once RT64 gets native fullscreen support on Linux
@@ -151,10 +171,6 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
         SDL_SetWindowFullscreen(window,0);
     }
 #endif
-
-    if (window == nullptr) {
-        exit_error("Failed to create window: %s\n", SDL_GetError());
-    }
 
     SDL_SysWMinfo wmInfo;
     SDL_VERSION(&wmInfo.version);
@@ -246,6 +262,10 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     // Prevent audio latency from building up by skipping samples in incoming audio when too many samples are already queued.
     // Skip samples based on how many microseconds of samples are queued already.
     uint32_t skip_factor = cur_queued_microseconds / 100000;
+    // skip_ratio is 1 << skip_factor. Cap the shift so a stalled audio device cannot overflow it.
+    if (skip_factor > 16) {
+        skip_factor = 16;
+    }
     if (skip_factor != 0) {
         uint32_t skip_ratio = 1 << skip_factor;
         num_bytes_to_queue /= skip_ratio;
@@ -562,9 +582,99 @@ void reorder_texture_pack(recomp::mods::ModContext&) {
 
 #define REGISTER_FUNC(name) recomp::overlays::register_base_export(#name, name)
 
+static bool extension_is_rom(const std::filesystem::path& path) {
+    std::string ext = path.extension().string();
+    for (char& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return ext == ".z64" || ext == ".n64" || ext == ".v64";
+}
+
+static bool try_select_rom_file(const std::filesystem::path& path) {
+    if (supported_games.empty()) {
+        return false;
+    }
+    recomp::RomValidationError error = recomp::select_rom(path, supported_games[0].game_id);
+    if (error == recomp::RomValidationError::Good) {
+        printf("Selected ROM: %s\n", path.string().c_str());
+        return true;
+    }
+    return false;
+}
+
+static bool try_roms_in_directory(const std::filesystem::path& directory) {
+    std::error_code ec;
+    if (directory.empty() || !std::filesystem::is_directory(directory, ec)) {
+        return false;
+    }
+    for (std::filesystem::directory_iterator it{directory, ec}, end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file(ec) || !extension_is_rom(it->path())) {
+            continue;
+        }
+        if (try_select_rom_file(it->path())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static std::filesystem::path launch_directory;
+
+static std::filesystem::path executable_directory() {
+#if defined(__linux__)
+    std::error_code ec;
+    std::filesystem::path executable = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) {
+        return executable.parent_path();
+    }
+#endif
+    return {};
+}
+
+// Avoid the native file dialog on a controller-only launch when a valid ROM is already nearby.
+static void select_rom_from_launch_paths(int argc, char** argv) {
+    if (supported_games.empty() || recomp::is_rom_valid(supported_games[0].game_id)) {
+        return;
+    }
+
+    for (int i = 1; i < argc; i++) {
+        if (argv[i] == nullptr || argv[i][0] == '\0' || argv[i][0] == '-') {
+            continue;
+        }
+        std::error_code ec;
+        std::filesystem::path candidate{argv[i]};
+        if (!std::filesystem::is_regular_file(candidate, ec)) {
+            continue;
+        }
+        if (try_select_rom_file(candidate)) {
+            return;
+        }
+        fprintf(stderr, "Command line path is not the NTSC-U ROM: %s\n", argv[i]);
+    }
+
+    const std::filesystem::path cwd = std::filesystem::current_path();
+    const std::filesystem::path exe_dir = executable_directory();
+    // Flatpak changes the working directory to /var/data before this runs.
+    const std::filesystem::path candidates[] = {
+        launch_directory,
+        launch_directory / "roms",
+        cwd,
+        cwd / "roms",
+        exe_dir,
+        exe_dir / "roms",
+    };
+    for (const std::filesystem::path& directory : candidates) {
+        if (try_roms_in_directory(directory)) {
+            return;
+        }
+    }
+}
+
 int main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
+    {
+        std::error_code ec;
+        launch_directory = std::filesystem::current_path(ec);
+    }
     recomp::Version project_version{};
     if (!recomp::Version::from_string(version_string, project_version)) {
         ultramodern::error_handling::message_box(("Invalid version string: " + version_string).c_str());
@@ -604,9 +714,6 @@ int main(int argc, char** argv) {
     // Set up console output to accept UTF-8 on windows
     SetConsoleOutputCP(CP_UTF8);
 
-    // Initialize native file dialogs.
-    NFD_Init();
-
     // Change to a font that supports Japanese characters
     CONSOLE_FONT_INFOEX cfi;
     cfi.cbSize = sizeof cfi;
@@ -632,6 +739,12 @@ int main(int argc, char** argv) {
     std::filesystem::current_path("/var/data", ec);
 #endif
 
+    // nativefiledialog requires NFD_Init on every platform. It used to run only on Windows,
+    // so the Linux ROM picker (and Steam Deck) never initialized GTK.
+    if (NFD_Init() != NFD_OKAY) {
+        fprintf(stderr, "Failed to initialize native file dialog.\n");
+    }
+
     // Initialize SDL audio and set the output frequency.
     SDL_InitSubSystem(SDL_INIT_AUDIO);
     reset_audio(48000);
@@ -647,6 +760,8 @@ int main(int argc, char** argv) {
     for (const auto& game : supported_games) {
         recomp::register_game(game);
     }
+
+    select_rom_from_launch_paths(argc, argv);
 
     REGISTER_FUNC(recomp_get_window_resolution);
     REGISTER_FUNC(recomp_get_target_aspect_ratio);
