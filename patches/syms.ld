@@ -64,4 +64,3 @@ remaster_set_cutscene_active = 0x8F0000F0;
 remaster_consume_cutscene_skip = 0x8F0000F4;
 remaster_play_voice = 0x8F0000F8;
 remaster_note_player = 0x8F0000FC;
-remaster_text_pointer = 0x8F000100;

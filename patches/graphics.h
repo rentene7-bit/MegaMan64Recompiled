@@ -18,6 +18,5 @@ DECLARE_FUNC(void, remaster_set_cutscene_active, s32);
 DECLARE_FUNC(s32, remaster_consume_cutscene_skip);
 DECLARE_FUNC(s32, remaster_play_voice, s32);
 DECLARE_FUNC(void, remaster_note_player, void*);
-DECLARE_FUNC(s32, remaster_text_pointer, s32);
 
 #endif

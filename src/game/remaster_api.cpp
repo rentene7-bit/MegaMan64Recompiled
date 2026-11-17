@@ -115,21 +115,20 @@ extern "C" void remaster_consume_cutscene_skip(uint8_t* rdram, recomp_context* c
 }
 
 extern "C" void remaster_text_pointer(uint8_t* rdram, recomp_context* ctx) {
-    const int32_t pointer = _arg<0, s32>(rdram, ctx);
-    int extra = 0;
-    if (pointer != 0) {
-        uint8_t upcoming[2] = {};
-        for (int i = 0; i < 2; i++) {
-            const int32_t at = pointer + i;
-            const uint32_t guest = static_cast<uint32_t>(at);
-            if (guest < 0x80000000u || guest >= 0x80800000u) {
-                break;
-            }
-            upcoming[i] = MEM_BU(0, static_cast<int64_t>(at));
+    /* v0 already points one byte past the glyph this tick revealed. */
+    const int32_t pointer = static_cast<int32_t>(ctx->r2);
+    uint8_t upcoming[2] = {};
+    int count = 0;
+    for (int i = 0; i < 2; i++) {
+        const int32_t at = pointer + i;
+        const uint32_t guest = static_cast<uint32_t>(at);
+        if (guest < 0x80000000u || guest >= 0x80800000u) {
+            break;
         }
-        extra = remaster::dialogue_extra_advance(upcoming, 2);
+        upcoming[i] = MEM_BU(0, static_cast<int64_t>(at));
+        count++;
     }
-    _return(ctx, pointer + extra);
+    ctx->r2 = static_cast<gpr>(static_cast<int64_t>(pointer + remaster::dialogue_extra_advance(upcoming, count)));
 }
 
 extern "C" void remaster_play_voice(uint8_t* rdram, recomp_context* ctx) {

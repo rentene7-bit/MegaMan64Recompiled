@@ -163,8 +163,7 @@ void set_text_speed(TextSpeed speed);
 TextSpeed text_speed();
 const char* text_speed_name(TextSpeed speed);
 bool set_text_speed_name(const std::string& name);
-/* Glyphs are the bytes pc1 measured ('a' = 0x30, space = 0x4F). Bytes outside
- * 0x20..0x7E are left for the next tick so a control code is not consumed. */
+/* The printer treats a byte below 0x84 as a glyph and 0x84 and above as an opcode. */
 bool dialogue_glyph(uint8_t value);
 int dialogue_extra_advance(const uint8_t* upcoming, int count);
 

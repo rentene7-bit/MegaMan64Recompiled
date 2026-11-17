@@ -249,7 +249,7 @@ const char* text_speed_name(TextSpeed speed) {
     }
 }
 bool dialogue_glyph(uint8_t value) {
-    return value >= 0x20 && value <= 0x7E;
+    return value < 0x84;
 }
 
 int dialogue_extra_advance(const uint8_t* upcoming, int count) {

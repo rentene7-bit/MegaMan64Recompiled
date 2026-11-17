@@ -22,10 +22,10 @@ void expect(bool condition, const std::string& message) {
 int run_idea_tests() {
     expect(remaster::dialogue_glyph(0x30), "letter a is a dialogue glyph");
     expect(remaster::dialogue_glyph(0x4F), "space is a dialogue glyph");
-    expect(!remaster::dialogue_glyph(0x01), "a low control byte is not a glyph");
-    const uint8_t upcoming[] = {0x30, 0x4F, 0x01};
-    expect(remaster::dialogue_extra_advance(upcoming, 3) == 2, "extra advance stops before a control byte");
-    expect(remaster::dialogue_extra_advance(upcoming + 2, 1) == 0, "a control byte is not consumed");
+    expect(!remaster::dialogue_glyph(0x84), "an opcode is not a glyph");
+    const uint8_t upcoming[] = {0x30, 0x4F, 0x84};
+    expect(remaster::dialogue_extra_advance(upcoming, 3) == 2, "extra advance stops before an opcode");
+    expect(remaster::dialogue_extra_advance(upcoming + 2, 1) == 0, "an opcode is not consumed");
 
     remaster::set_difficulty(remaster::Difficulty::Easy);
     expect(remaster::damage_taken_q8() < 256, "easy reduces damage taken");
