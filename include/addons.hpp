@@ -102,6 +102,90 @@ void addon_reset();
 /* Flag id for a built tool, or -1. */
 int addon_built_flag(AddonId id);
 
+/* Buster shot halfwords written by func_8007B814. 0x6208 is the heavy path. */
+constexpr int kShotLight = 0x4208;
+constexpr int kShotHeavy = 0x6208;
+constexpr uint32_t kPartByteGuest = 0x80204E00u;
+constexpr int kFireButton = 0x4000;
+
+struct ShotSpawn {
+    int half = kShotLight;
+    bool charge_built = false;
+    int charge_meter = 0;
+};
+
+struct ShotSpawnOut {
+    int half = kShotLight;
+    int charge_meter = 0;
+    bool zero_rapid = false;
+    bool heavy = false;
+};
+
+ShotSpawnOut adjust_shot_spawn(const ShotSpawn& in);
+
+struct ShotHit {
+    int alive = 0;
+    int tag = 0;
+    int vel_x = 0;
+    int vel_z = 0;
+    bool pierce = false;
+    bool bounce = false;
+    bool arc = false;
+};
+
+struct ShotHitOut {
+    bool keep = false;
+    int alive = 0;
+    int tag = 0;
+    int vel_x = 0;
+    int vel_z = 0;
+    bool chain = false;
+};
+
+ShotHitOut adjust_shot_hit(const ShotHit& in);
+
+struct OutgoingHit {
+    int amount = 0;
+    bool victim_is_player = false;
+    bool heavy = false;
+    bool chain = false;
+};
+
+struct OutgoingHitOut {
+    int amount = 0;
+    bool heavy_left = false;
+    bool chain_left = false;
+};
+
+OutgoingHitOut adjust_outgoing_hit(const OutgoingHit& in);
+
+/* Hybrid written to the live part byte. Never larger than the better input. */
+int fusion_part_byte(int slot_a, int slot_b);
+
+struct MoveStep {
+    int vel_x = 0;
+    int vel_z = 0;
+    int dash_left = 0;
+    bool kicked = false;
+};
+
+MoveStep step_motion(MoveStep in, bool want_dash, bool want_kick, bool in_shaft);
+
+void addon_hold_fire(bool held);
+void addon_set_charge_meter(int value);
+void addon_set_heavy(bool heavy);
+bool addon_heavy_pending();
+void addon_set_chain(bool chain);
+bool addon_chain_pending();
+int addon_charge_meter();
+bool addon_charge_built();
+bool addon_request_scene_reload();
+bool addon_take_scene_reload();
+void addon_note_enemy_hp(int hp);
+std::string addon_hud_line();
+std::string addon_menu_line();
+MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft);
+
 } // namespace remaster
 
 #endif

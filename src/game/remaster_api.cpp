@@ -9,6 +9,7 @@
 #endif
 
 #include <atomic>
+#include <string>
 
 namespace {
 
@@ -64,6 +65,11 @@ void apply_edit(uint8_t* rdram, int32_t player, const remaster::AddonEdit& edit)
     for (int i = 0; i < edit.flag_count; ++i) {
         write_flag(rdram, edit.flags_to_set[i]);
     }
+    if (edit.note.find("fused") != std::string::npos) {
+        const int64_t part = guest_at(remaster::kPartByteGuest);
+        const int hybrid = remaster::fusion_part_byte(MEM_BU(0, part), MEM_BU(0, part + 1));
+        MEM_BU(0, part) = static_cast<uint8_t>(hybrid);
+    }
     if (persist) {
         zelda64::save_config();
     }
@@ -88,6 +94,35 @@ void remember_player(uint8_t* rdram, int32_t player) {
     world.zenny = MEM_HU(0, guest_at(remaster::kZennyGuest));
     world.hp = MEM_H(0x6E, player);
     apply_edit(rdram, player, remaster::addon_apply_requests(world));
+    const int buttons = MEM_HU(0x7C, player);
+    remaster::addon_hold_fire((buttons & remaster::kFireButton) != 0);
+    if (remaster::addon_charge_built()) {
+        MEM_BU(0, guest_at(remaster::kPartByteGuest + 1u)) = 0;
+    }
+    const bool shaft = world.area == 0 || world.area == 0x13 || world.area == 0x1A;
+    const int vel_x = MEM_H(0x44, player);
+    const int vel_z = MEM_H(0x48, player);
+    const remaster::MoveStep step = remaster::addon_take_motion(vel_x, vel_z, shaft);
+    if (step.vel_x != vel_x) {
+        int next = step.vel_x;
+        if (next > 32767) {
+            next = 32767;
+        }
+        if (next < -32768) {
+            next = -32768;
+        }
+        MEM_H(0x44, player) = static_cast<int16_t>(next);
+    }
+    if (step.vel_z != vel_z) {
+        int next = step.vel_z;
+        if (next > 32767) {
+            next = 32767;
+        }
+        if (next < -32768) {
+            next = -32768;
+        }
+        MEM_H(0x48, player) = static_cast<int16_t>(next);
+    }
     /* Absolute address confirmed on pc1. 0 is Remove, 2 is Machine Buster. */
     const int64_t equipped_at = static_cast<int64_t>(static_cast<int32_t>(0x80204B20));
     const int pending = remaster::take_equipped_weapon_write();
@@ -108,14 +143,79 @@ extern "C" void remaster_note_player_ctx(uint8_t* rdram, recomp_context* ctx) {
 }
 
 extern "C" void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx) {
-    (void)rdram;
     const int32_t player = g_player_guest.load();
     const int32_t victim = static_cast<int32_t>(ctx->r16);
     const int32_t amount = static_cast<int32_t>(ctx->r17);
     const bool known = guest_ram(player);
     const bool is_player = known && victim == player;
     const int scaled = remaster::scale_damage_amount(known, is_player, amount);
-    ctx->r17 = static_cast<gpr>(static_cast<int64_t>(scaled));
+    remaster::OutgoingHit hit;
+    hit.amount = scaled;
+    hit.victim_is_player = is_player;
+    hit.heavy = remaster::addon_heavy_pending();
+    hit.chain = remaster::addon_chain_pending();
+    const remaster::OutgoingHitOut out = remaster::adjust_outgoing_hit(hit);
+    remaster::addon_set_heavy(out.heavy_left);
+    remaster::addon_set_chain(out.chain_left);
+    ctx->r17 = static_cast<gpr>(static_cast<int64_t>(out.amount));
+    if (!is_player && guest_ram(victim)) {
+        remaster::addon_note_enemy_hp(MEM_H(0x6E, victim));
+    }
+}
+
+extern "C" void remaster_shot_spawn(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    remaster::ShotSpawn in;
+    in.half = static_cast<int>(ctx->r2);
+    in.charge_built = remaster::addon_charge_built();
+    in.charge_meter = remaster::addon_charge_meter();
+    const remaster::ShotSpawnOut out = remaster::adjust_shot_spawn(in);
+    ctx->r2 = static_cast<gpr>(out.half);
+    remaster::addon_set_charge_meter(out.charge_meter);
+    if (out.heavy) {
+        remaster::addon_set_heavy(true);
+    }
+    if (out.zero_rapid) {
+        const int64_t rapid = static_cast<int64_t>(static_cast<int32_t>(remaster::kPartByteGuest + 1u));
+        MEM_BU(0, rapid) = 0;
+    }
+}
+
+extern "C" void remaster_shot_hit(uint8_t* rdram, recomp_context* ctx) {
+    const int32_t shot = static_cast<int32_t>(ctx->r17);
+    if (static_cast<uint32_t>(shot) < 0x80000000u || static_cast<uint32_t>(shot) >= 0x80800000u) {
+        return;
+    }
+    remaster::ShotHit in;
+    in.alive = static_cast<int>(ctx->r2);
+    in.tag = MEM_B(0xB, shot);
+    in.vel_x = MEM_H(0x44, shot);
+    in.vel_z = MEM_H(0x48, shot);
+    in.pierce = remaster::addon_built(remaster::AddonId::Pierce);
+    in.bounce = remaster::addon_built(remaster::AddonId::Bounce);
+    in.arc = remaster::addon_built(remaster::AddonId::Arc);
+    const remaster::ShotHitOut out = remaster::adjust_shot_hit(in);
+    if (!out.keep) {
+        return;
+    }
+    ctx->r2 = 0;
+    MEM_B(0x3, shot) = 0;
+    MEM_B(0xB, shot) = static_cast<int8_t>(out.tag);
+    MEM_H(0x44, shot) = static_cast<int16_t>(out.vel_x);
+    MEM_H(0x48, shot) = static_cast<int16_t>(out.vel_z);
+    if (out.chain) {
+        remaster::addon_set_chain(true);
+    }
+}
+
+extern "C" void remaster_scene_reload(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    if (!remaster::addon_take_scene_reload()) {
+        return;
+    }
+    /* Loaded-area halfword is r2. Area is r16. A mismatch takes the game's
+     * own reload path. The area byte is left as the ruin the player is in. */
+    ctx->r2 = ctx->r16 + 1;
 }
 
 extern "C" void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx) {

@@ -1,4 +1,5 @@
 #include "addons.hpp"
+#include "addon_tools.hpp"
 
 #include <iostream>
 #include <string>
@@ -128,6 +129,75 @@ int run_addon_tests() {
 
     AddonEdit poor = addon_command(AddonVerb::Build, AddonId::Sentry, AddonView{});
     expect(poor.zenny_delta == 0, "a build without junk or zenny spends nothing");
+
+    ShotSpawn light;
+    light.charge_built = true;
+    light.charge_meter = 2;
+    light.half = kShotLight;
+    ShotSpawnOut still = adjust_shot_spawn(light);
+    expect(still.half == kShotLight && !still.heavy, "a short hold stays a light shot");
+    light.charge_meter = 3;
+    ShotSpawnOut heavy = adjust_shot_spawn(light);
+    expect(heavy.half == kShotHeavy && heavy.heavy && heavy.zero_rapid, "a full hold is the heavy shot");
+
+    ShotHit hit;
+    hit.alive = 0x80;
+    hit.vel_x = 5;
+    hit.vel_z = -2;
+    hit.pierce = true;
+    ShotHitOut passed = adjust_shot_hit(hit);
+    expect(passed.keep && passed.alive == 0 && (passed.tag & 1) != 0, "pierce keeps the shot");
+    hit.tag = passed.tag;
+    hit.pierce = false;
+    hit.bounce = true;
+    ShotHitOut bounced = adjust_shot_hit(hit);
+    expect(bounced.keep && bounced.vel_x == -5 && bounced.vel_z == 2, "bounce reverses the shot");
+    hit.tag = bounced.tag;
+    hit.bounce = false;
+    hit.arc = true;
+    hit.vel_x = 5;
+    ShotHitOut chained = adjust_shot_hit(hit);
+    expect(chained.chain && chained.keep, "arc chain lets the shot continue");
+    hit.tag = chained.tag;
+    ShotHitOut done = adjust_shot_hit(hit);
+    expect(!done.keep, "a shot dies after pierce, bounce, and arc");
+
+    OutgoingHit blow;
+    blow.amount = 4;
+    blow.heavy = true;
+    blow.chain = true;
+    OutgoingHitOut scaled = adjust_outgoing_hit(blow);
+    expect(scaled.amount == 24 && !scaled.heavy_left && !scaled.chain_left, "heavy and chain multiply once");
+    blow.victim_is_player = true;
+    OutgoingHitOut player_hit = adjust_outgoing_hit(blow);
+    expect(player_hit.amount == 4, "player hits are not boosted");
+
+    expect(fusion_part_byte(9, 4) == 4, "fusion keeps the smaller part byte");
+    expect(fusion_part_byte(0, 0) == 1, "an empty pair writes the low hybrid");
+
+    MoveStep move;
+    move = step_motion(move, true, false, false);
+    expect(move.vel_x == 12 && move.dash_left == 7, "dash adds the existing velocity step");
+    MoveStep kick;
+    kick = step_motion(kick, false, true, true);
+    expect(kick.vel_z == 12 && kick.kicked, "wall kick only fires in a shaft");
+    MoveStep blocked = step_motion(MoveStep{}, false, true, false);
+    expect(blocked.vel_z == 0 && !blocked.kicked, "wall kick does not fire in an old room");
+
+    addon_reset();
+    world = rich();
+    addon_command(AddonVerb::FindJunk, AddonId::Sonar, world);
+    addon_command(AddonVerb::Build, AddonId::Sonar, world);
+    expect(tools::sonar(), "sonar() matches the built tool");
+    expect(tools::tool_hooks().sonar && !tools::fusion(), "ToolHooks reports sonar only");
+    expect(tools::kFlagLo == 0xC00 && tools::kFlagHi == 0xCFF, "published flag range is 0xC00-0xCFF");
+    addon_command(AddonVerb::Ping, AddonId::Sonar, world);
+    addon_command(AddonVerb::OpenVault, AddonId::Vaults, world);
+    addon_command(AddonVerb::DeepPush, AddonId::DeepGate, world);
+    expect(tools::deep_gate_floor() == 1, "deep gate floor is visible to the other branch");
+    expect(addon_take_scene_reload(), "descending requests the scene reload");
+    tools::note_deep_gate_floor(4);
+    expect(tools::deep_gate_floor() == 4, "the other branch can record a floor");
 
     return g_failed;
 }

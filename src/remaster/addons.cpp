@@ -1,4 +1,5 @@
 #include "addons.hpp"
+#include "addon_tools.hpp"
 
 #include <algorithm>
 #include <array>
@@ -62,13 +63,19 @@ struct State {
     int last_area = -1;
     int seen_hp = -1;
     int slow_heal = 0;
+    int dash_left = 0;
+    bool kick_request = false;
+    bool kicked = false;
+    bool heavy_pending = false;
+    bool chain_pending = false;
+    bool scene_reload = false;
+    int enemy_hp = -1;
 };
 
 State g;
-std::atomic<int> g_cycle{0};
 std::atomic<int> g_confirm{0};
 std::atomic<int> g_special{0};
-int g_selected = static_cast<int>(AddonId::Sonar);
+std::atomic<int> g_selected{static_cast<int>(AddonId::Sonar)};
 
 int index_of(AddonId id) {
     const int n = static_cast<int>(id);
@@ -206,6 +213,7 @@ AddonEdit deep_push(const AddonView& world) {
     g.deep_inside = true;
     g.built[index_of(AddonId::DeepGate)] = true;
     g.deep_floor += 1;
+    g.scene_reload = true;
     const int find = 150 * g.deep_floor;
     g.deep_unbanked += find;
     edit.note = "Deep Gate floor reached. Unbanked loot is not safe yet.";
@@ -283,8 +291,8 @@ void gear_tick(const AddonView& world, AddonEdit& edit) {
     if (g.built[index_of(AddonId::Overclock)]) {
         g.heat = std::min(100, g.heat + 1);
     }
-    if (g.built[index_of(AddonId::Charge)]) {
-        g.charge = std::min(3, g.charge + 1);
+    if (g.built[index_of(AddonId::Charge)] && g.charge > 3) {
+        g.charge = 3;
     }
     if (g.built[index_of(AddonId::Charge)] && g.built[index_of(AddonId::Pierce)]) {
         g.built[index_of(AddonId::Resonance)] = true;
@@ -418,7 +426,13 @@ AddonEdit addon_command(AddonVerb verb, AddonId id, const AddonView& world) {
             return edit;
         }
         if (id == AddonId::Dash) {
-            edit.note = "Dash ready on its cooldown. Motion reuse is still the vanilla step.";
+            g.dash_left = 8;
+            edit.note = "Dash uses the shot velocity halfwords for eight steps.";
+            return edit;
+        }
+        if (id == AddonId::WallKick) {
+            g.kick_request = true;
+            edit.note = "Wall kick is armed for a marked shaft.";
             return edit;
         }
         if (id == AddonId::Analyzer) {
@@ -434,7 +448,17 @@ AddonEdit addon_command(AddonVerb verb, AddonId id, const AddonView& world) {
 }
 
 void addon_request_cycle(int delta) {
-    g_cycle.fetch_add(delta);
+    if (delta == 0) {
+        return;
+    }
+    int next = g_selected.load() + (delta > 0 ? 1 : -1);
+    if (next < 1) {
+        next = kCount - 1;
+    }
+    if (next >= kCount) {
+        next = 1;
+    }
+    g_selected.store(next);
 }
 
 void addon_request_confirm() {
@@ -446,7 +470,7 @@ void addon_request_special() {
 }
 
 AddonId addon_selected() {
-    return static_cast<AddonId>(g_selected);
+    return static_cast<AddonId>(g_selected.load());
 }
 
 AddonVerb special_for(AddonId id) {
@@ -472,20 +496,10 @@ AddonVerb special_for(AddonId id) {
 }
 
 AddonEdit addon_apply_requests(const AddonView& world) {
-    const int cycle = g_cycle.exchange(0);
-    if (cycle != 0) {
-        int next = g_selected + (cycle > 0 ? 1 : -1);
-        if (next < 1) {
-            next = kCount - 1;
-        }
-        if (next >= kCount) {
-            next = 1;
-        }
-        g_selected = next;
-    }
     AddonEdit edit;
+    const int selected = g_selected.load();
     if (g_special.exchange(0) > 0) {
-        const AddonId id = static_cast<AddonId>(g_selected);
+        const AddonId id = static_cast<AddonId>(selected);
         const AddonVerb verb = special_for(id);
         if (verb == AddonVerb::None) {
             edit.note = std::string(addon_name(id)) + " has no field action.";
@@ -496,7 +510,7 @@ AddonEdit addon_apply_requests(const AddonView& world) {
         }
     }
     if (g_confirm.exchange(0) > 0) {
-        const AddonId id = static_cast<AddonId>(g_selected);
+        const AddonId id = static_cast<AddonId>(selected);
         const AddonVerb verb = g.built[index_of(id)] ? AddonVerb::Upgrade : AddonVerb::Build;
         merge_edit(edit, addon_command(verb, id, world));
     }
@@ -559,5 +573,228 @@ void addon_load_blob(const std::string& blob) {
 void addon_reset() {
     g = State{};
 }
+
+ShotSpawnOut adjust_shot_spawn(const ShotSpawn& in) {
+    ShotSpawnOut out;
+    out.half = in.half;
+    out.charge_meter = in.charge_meter;
+    out.zero_rapid = in.charge_built;
+    if (in.charge_built && in.charge_meter >= 3) {
+        out.half = kShotHeavy;
+        out.charge_meter = 0;
+        out.heavy = true;
+    }
+    return out;
+}
+
+ShotHitOut adjust_shot_hit(const ShotHit& in) {
+    ShotHitOut out;
+    out.alive = in.alive;
+    out.tag = in.tag;
+    out.vel_x = in.vel_x;
+    out.vel_z = in.vel_z;
+    if (in.alive < 0x80) {
+        return out;
+    }
+    if (in.pierce && (in.tag & 1) == 0) {
+        out.keep = true;
+        out.alive = 0;
+        out.tag = in.tag | 1;
+        return out;
+    }
+    if (in.bounce && (in.tag & 2) == 0) {
+        out.keep = true;
+        out.alive = 0;
+        out.tag = in.tag | 2;
+        out.vel_x = -in.vel_x;
+        out.vel_z = -in.vel_z;
+        return out;
+    }
+    if (in.arc && (in.tag & 4) == 0) {
+        out.keep = true;
+        out.alive = 0;
+        out.tag = in.tag | 4;
+        out.chain = true;
+        return out;
+    }
+    return out;
+}
+
+OutgoingHitOut adjust_outgoing_hit(const OutgoingHit& in) {
+    OutgoingHitOut out;
+    out.amount = in.amount;
+    out.heavy_left = in.heavy;
+    out.chain_left = in.chain;
+    if (in.victim_is_player || in.amount <= 0) {
+        return out;
+    }
+    if (in.heavy) {
+        out.amount = in.amount * 3;
+        out.heavy_left = false;
+    }
+    if (in.chain) {
+        out.amount *= 2;
+        out.chain_left = false;
+    }
+    return out;
+}
+
+int fusion_part_byte(int slot_a, int slot_b) {
+    if (slot_a > 0 && slot_b > 0) {
+        return slot_a < slot_b ? slot_a : slot_b;
+    }
+    if (slot_a > 0) {
+        return slot_a;
+    }
+    if (slot_b > 0) {
+        return slot_b;
+    }
+    return 1;
+}
+
+MoveStep step_motion(MoveStep in, bool want_dash, bool want_kick, bool in_shaft) {
+    MoveStep out = in;
+    if (want_dash) {
+        out.dash_left = 8;
+    }
+    if (out.dash_left > 0) {
+        out.vel_x += 12;
+        out.dash_left -= 1;
+    }
+    if (want_kick && in_shaft && !out.kicked) {
+        out.vel_z += 12;
+        out.kicked = true;
+    }
+    return out;
+}
+
+void addon_hold_fire(bool held) {
+    if (!g.built[index_of(AddonId::Charge)]) {
+        return;
+    }
+    if (held) {
+        g.charge = std::min(3, g.charge + 1);
+        return;
+    }
+    if (g.charge < 3) {
+        g.charge = 0;
+    }
+}
+
+int addon_charge_meter() {
+    return g.charge;
+}
+
+bool addon_charge_built() {
+    return g.built[index_of(AddonId::Charge)];
+}
+
+bool addon_request_scene_reload() {
+    return g.scene_reload;
+}
+
+bool addon_take_scene_reload() {
+    const bool pending = g.scene_reload;
+    g.scene_reload = false;
+    return pending;
+}
+
+void addon_note_enemy_hp(int hp) {
+    if (hp >= 0) {
+        g.enemy_hp = hp;
+    }
+}
+
+std::string addon_hud_line() {
+    std::ostringstream out;
+    if (g.built[index_of(AddonId::Patch)]) {
+        out << "Patch heal";
+    }
+    if (g.built[index_of(AddonId::Analyzer)]) {
+        if (!out.str().empty()) {
+            out << "  ";
+        }
+        out << "Analyzer ";
+        if (g.enemy_hp < 0) {
+            out << "--";
+        } else {
+            out << g.enemy_hp;
+        }
+    }
+    return out.str();
+}
+
+std::string addon_menu_line() {
+    return addon_status_line(static_cast<AddonId>(g_selected.load()));
+}
+
+MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft) {
+    MoveStep in;
+    in.vel_x = vel_x;
+    in.vel_z = vel_z;
+    in.dash_left = g.built[index_of(AddonId::Dash)] ? g.dash_left : 0;
+    in.kicked = g.kicked;
+    const bool shaft = in_shaft && g.built[index_of(AddonId::WallKick)];
+    MoveStep out = step_motion(in, false, g.kick_request, shaft);
+    g.dash_left = out.dash_left;
+    g.kicked = out.kicked;
+    g.kick_request = false;
+    return out;
+}
+
+void addon_set_charge_meter(int value) {
+    g.charge = value < 0 ? 0 : value;
+}
+
+void addon_set_heavy(bool heavy) {
+    g.heavy_pending = heavy;
+}
+
+bool addon_heavy_pending() {
+    return g.heavy_pending;
+}
+
+void addon_set_chain(bool chain) {
+    g.chain_pending = chain;
+}
+
+bool addon_chain_pending() {
+    return g.chain_pending;
+}
+
+namespace tools {
+
+ToolHooks tool_hooks() {
+    ToolHooks hooks;
+    hooks.sonar = g.built[static_cast<int>(AddonId::Sonar)];
+    hooks.grapple = g.built[static_cast<int>(AddonId::Grapple)];
+    hooks.coolant = g.built[static_cast<int>(AddonId::Coolant)];
+    hooks.fusion = g.built[static_cast<int>(AddonId::Fusion)];
+    return hooks;
+}
+
+bool sonar() {
+    return tool_hooks().sonar;
+}
+
+bool fusion() {
+    return tool_hooks().fusion;
+}
+
+int deep_gate_floor() {
+    return g.deep_floor;
+}
+
+void note_deep_gate_floor(int floor) {
+    if (floor < 0) {
+        floor = 0;
+    }
+    g.deep_floor = floor;
+    if (floor > 0) {
+        g.built[static_cast<int>(AddonId::DeepGate)] = true;
+    }
+}
+
+} // namespace tools
 
 } // namespace remaster

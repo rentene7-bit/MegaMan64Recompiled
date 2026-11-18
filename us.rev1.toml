@@ -184,6 +184,26 @@ func = "func_8002E8FC_9CFC"
 before_vram = 0x8002ED7C
 text =	"rect_aspect_auto(rdram, ctx);"
 
+# Buster shot init. r2 is the halfword about to be stored at shot+0x1A.
+# 0x4208 is the light shot and 0x6208 is the heavy one already in this function.
+[[patches.hook]]
+func = "func_8007B814_56C14"
+before_vram = 0x8007BA00
+text = "remaster_shot_spawn(rdram, ctx);"
+
+# Shot hit path. r2 is shot+0x3 before sltiu. Zero keeps the shot alive.
+[[patches.hook]]
+func = "func_8007BA60_56E60"
+before_vram = 0x8007BD3C
+text = "remaster_shot_hit(rdram, ctx);"
+
+# Scene manager compare. r16 is the requested area, r2 is the loaded area.
+# A mismatch reloads the current ruin. The area byte is not written.
+[[patches.hook]]
+func = "func_80073510_4E910"
+before_vram = 0x80073558
+text = "remaster_scene_reload(rdram, ctx);"
+
 # Player object is a0. Record it and its live HP at +0x6E.
 [[patches.hook]]
 func = "func_80069A64_44E64"
