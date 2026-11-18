@@ -105,7 +105,8 @@ void remember_player(uint8_t* rdram, int32_t player) {
     const bool shaft = world.area == 0 || world.area == 0x13 || world.area == 0x1A;
     const int vel_x = MEM_H(0x44, player);
     const int vel_z = MEM_H(0x48, player);
-    const remaster::MoveStep step = remaster::addon_take_motion(vel_x, vel_z, shaft);
+    const remaster::MoveStep step = remaster::addon_take_motion(
+        vel_x, vel_z, shaft, MEM_W(0x1C, player), MEM_W(0x24, player));
     if (step.vel_x != vel_x) {
         int next = step.vel_x;
         if (next > 32767) {

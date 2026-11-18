@@ -319,6 +319,17 @@ int run_addon_tests() {
     planted.alive = 0x80;
     PlantTickOut stayed = plant_shot_tick(planted);
     expect(stayed.keep && stayed.lives == 1, "a planted shot stays and counts down");
+
+    WallTouch touching;
+    touching.vel_x = 10;
+    touching.vel_z = 0;
+    touching.stuck = true;
+    touching.in_shaft = true;
+    touching.built = true;
+    WallTouchOut bounced_off = wall_contact(touching);
+    expect(bounced_off.kicked && bounced_off.vel_x == -10, "wall kick reverses a stuck step in a shaft");
+    touching.in_shaft = false;
+    expect(!wall_contact(touching).kicked, "wall kick ignores a stuck step outside a shaft");
     seek.to_x = 0;
     seek.to_z = 0;
     expect(steer_shot(seek).vel_x == 0, "arc chain keeps its velocity without a victim");

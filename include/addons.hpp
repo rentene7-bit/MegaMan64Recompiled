@@ -215,6 +215,23 @@ struct MoveStep {
 
 MoveStep step_motion(MoveStep in, bool want_dash, bool want_kick, bool in_shaft);
 
+struct WallTouch {
+    int vel_x = 0;
+    int vel_z = 0;
+    bool stuck = false;
+    bool in_shaft = false;
+    bool built = false;
+    bool already = false;
+};
+
+struct WallTouchOut {
+    int vel_x = 0;
+    int vel_z = 0;
+    bool kicked = false;
+};
+
+WallTouchOut wall_contact(const WallTouch& in);
+
 void addon_hold_fire(bool held);
 void addon_set_charge_meter(int value);
 void addon_set_heavy(bool heavy);
@@ -241,7 +258,7 @@ bool addon_take_scene_reload();
 void addon_note_enemy_hp(int hp);
 std::string addon_hud_line();
 std::string addon_menu_line();
-MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft);
+MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft, int pos_x, int pos_z);
 
 } // namespace remaster
 

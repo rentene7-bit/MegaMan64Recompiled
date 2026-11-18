@@ -79,6 +79,9 @@ struct State {
     int victim_x = 0;
     int victim_z = 0;
     bool plant_shot = false;
+    bool have_pos = false;
+    int last_x = 0;
+    int last_z = 0;
     int seen_zenny = -1;
 };
 
@@ -811,6 +814,23 @@ MoveStep step_motion(MoveStep in, bool want_dash, bool want_kick, bool in_shaft)
     return out;
 }
 
+WallTouchOut wall_contact(const WallTouch& in) {
+    WallTouchOut out;
+    out.vel_x = in.vel_x;
+    out.vel_z = in.vel_z;
+    out.kicked = in.already;
+    if (!in.built || !in.in_shaft || !in.stuck || in.already) {
+        return out;
+    }
+    if (in.vel_x == 0 && in.vel_z == 0) {
+        return out;
+    }
+    out.vel_x = -in.vel_x;
+    out.vel_z = -in.vel_z;
+    out.kicked = true;
+    return out;
+}
+
 void addon_hold_fire(bool held) {
     if (g.built[index_of(AddonId::Charge)]) {
         if (held) {
@@ -875,7 +895,14 @@ std::string addon_menu_line() {
     return addon_status_line(static_cast<AddonId>(g_selected.load()));
 }
 
-MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft) {
+MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft, int pos_x, int pos_z) {
+    if (g.have_pos && (pos_x != g.last_x || pos_z != g.last_z)) {
+        g.kicked = false;
+    }
+    const bool stuck = g.have_pos && pos_x == g.last_x && pos_z == g.last_z;
+    g.last_x = pos_x;
+    g.last_z = pos_z;
+    g.have_pos = true;
     MoveStep in;
     in.vel_x = vel_x;
     in.vel_z = vel_z;
@@ -883,6 +910,17 @@ MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft) {
     in.kicked = g.kicked;
     const bool shaft = in_shaft && g.built[index_of(AddonId::WallKick)];
     MoveStep out = step_motion(in, false, g.kick_request, shaft);
+    WallTouch touch;
+    touch.vel_x = out.vel_x;
+    touch.vel_z = out.vel_z;
+    touch.stuck = stuck;
+    touch.in_shaft = in_shaft;
+    touch.built = g.built[index_of(AddonId::WallKick)];
+    touch.already = out.kicked;
+    const WallTouchOut contact = wall_contact(touch);
+    out.vel_x = contact.vel_x;
+    out.vel_z = contact.vel_z;
+    out.kicked = contact.kicked;
     if (g.pull_left > 0) {
         out.vel_x += 24;
         g.pull_left -= 1;
