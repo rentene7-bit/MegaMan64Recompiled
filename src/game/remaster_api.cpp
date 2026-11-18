@@ -52,7 +52,7 @@ extern "C" void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx) {
     const bool known = guest_ram(player);
     const bool tagged_player = known && victim == player;
     const bool absolute_player = static_cast<uint32_t>(victim) == 0x802049B0u;
-    const int adjusted = remaster::addons::on_hurt(tagged_player || absolute_player, amount);
+    const int adjusted = remaster::addons::on_hurt(victim, tagged_player || absolute_player, amount);
     const int scaled = remaster::scale_damage_amount(known, tagged_player, adjusted);
     ctx->r17 = static_cast<gpr>(static_cast<int64_t>(scaled));
 }
@@ -104,6 +104,10 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
         remaster::addons::equip_water_gear();
     }
     remaster::addons::on_world(area, entrance, frames);
+    const int settled = remaster::addons::settle_zenny(zenny);
+    if (settled != zenny) {
+        MEM_H(0, static_cast<int64_t>(0x801BC406)) = static_cast<int16_t>(static_cast<uint16_t>(settled));
+    }
 
     for (int id : remaster::addons::flag_writes()) {
         addon_flag_raise(rdram, id);
@@ -127,7 +131,12 @@ extern "C" void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx) {
     if (!guest_ram(actor)) {
         return;
     }
-    const int hp = MEM_H(0x6E, actor);
+    int hp = MEM_H(0x6E, actor);
+    const int encounter_hp = remaster::addons::claim_actor(actor);
+    if (encounter_hp > 0) {
+        hp = encounter_hp;
+        MEM_H(0x6E, actor) = static_cast<int16_t>(hp);
+    }
     int id = static_cast<int>((static_cast<uint32_t>(actor) >> 4) & 0x7fffu);
     if (id == 0) {
         id = 1;

@@ -97,12 +97,16 @@ void note_story_complete(bool done);
 bool story_complete();
 void note_zenny(int amount);
 int zenny();
+/* Applies zenny granted or spent since the last call to the game's current total. */
+int settle_zenny(int game_zenny);
 bool spend_zenny(int amount);
 void grant_zenny(int amount);
 void note_area(int area, int entrance);
 int area();
 void on_world(int area_id, int entrance, int play_frames);
-int on_hurt(bool victim_is_player, int damage);
+int on_hurt(int victim_key, bool victim_is_player, int damage);
+/* Tags the actor already in the fight. Returns the HP to write at +0x6E, or -1. */
+int claim_actor(int victim_key);
 void note_deep_gate_floor(int floor);
 int deep_gate_floor();
 bool lab_ready();

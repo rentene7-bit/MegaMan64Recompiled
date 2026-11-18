@@ -14,6 +14,7 @@ struct State {
     ToolHooks tools;
     bool story = false;
     int zenny = 0;
+    int zenny_pending = 0;
     int area = 0;
     int entrance = 0;
     int deep_floor = 0;
@@ -62,11 +63,18 @@ struct State {
     int sonar_marks = 0;
     bool mirror_on = false;
     int elite_hp = 0;
+    int elite_max = 36;
+    int elite_kind = 0;
     bool elite_front = true;
+    bool elite_done = false;
     bool titan_alive = false;
     bool titan_fought = false;
     int titan_hp = 0;
+    bool custodian_done = false;
+    int tagged = 0;
+    int role = 0;
     bool rival_on = false;
+    bool rival_won = false;
     double rival_time = 0;
     int rival_area = -1;
     SpawnRequest spawns[8] = {};
@@ -224,13 +232,24 @@ void note_story_complete(bool done) { g.story = done; }
 bool story_complete() { return g.story; }
 void note_zenny(int amount) { g.zenny = std::max(0, amount); }
 int zenny() { return g.zenny; }
+int settle_zenny(int game_zenny) {
+    const int pending = g.zenny_pending;
+    g.zenny_pending = 0;
+    const int settled = std::clamp(std::max(0, game_zenny) + pending, 0, 65535);
+    g.zenny = settled;
+    return settled;
+}
 bool spend_zenny(int amount) {
     if (amount < 0 || g.zenny < amount) return false;
     g.zenny -= amount;
+    g.zenny_pending -= amount;
     return true;
 }
 void grant_zenny(int amount) {
-    if (amount > 0) g.zenny += amount;
+    if (amount > 0) {
+        g.zenny += amount;
+        g.zenny_pending += amount;
+    }
 }
 void note_area(int area_id, int entrance) {
     g.area = area_id;
@@ -540,8 +559,10 @@ bool collapse_banked() { return g.collapse_banked; }
 void on_world(int area_id, int entrance, int play_frames) {
     const bool changed = area_id != g.area;
     note_area(area_id, entrance);
+    if (changed && area_id != 0x1A) g.tagged = 0;
     if (changed && g.rival_on) {
-        finish_race(g.rival_time, 45.0, 1000);
+        const RaceResult result = finish_race(g.rival_time, 45.0, 1000);
+        g.rival_won = result.won;
         g.rival_on = false;
     } else if (changed && area_id == 0x1A && !g.rival_on) {
         g.rival_on = true;
@@ -549,12 +570,20 @@ void on_world(int area_id, int entrance, int play_frames) {
         g.rival_area = area_id;
         queue_spawn(0, 1, "rival");
     }
+    if (changed && area_id == 0x12 && g.rebuild < 5) {
+        fund_rebuild(kStages[g.rebuild].supplies);
+    }
+    if (area_id == 0x1B) {
+        if (g.tools.grapple) add_flutter_part(1);
+        if (g.tools.sonar) add_flutter_part(2);
+        if (g.tools.fusion) add_flutter_part(3);
+    }
     if (area_id == 0x1A && !g.mirror_on) {
         g.mirror_on = true;
-        g.elite_hp = 36;
         const auto remix = mirror_remix(area_id);
-        for (const RemixSlot& slot : remix) {
-            queue_spawn(slot.enemy, slot.count, "mirror");
+        if (!remix.empty()) {
+            g.elite_kind = remix[0].enemy % 3;
+            g.elite_max = 24 + remix[0].count * 12;
         }
     }
     if (!g.titan_fought && play_frames >= 36000) {
@@ -565,31 +594,60 @@ void on_world(int area_id, int entrance, int play_frames) {
     }
 }
 
-int on_hurt(bool victim_is_player, int damage) {
+int claim_actor(int victim_key) {
+    if (victim_key == 0) return -1;
+    if (g.tagged != 0 && g.tagged != victim_key) return -1;
+    if (g.tagged == 0) {
+        if (g.area == 0x1A && g.titan_alive) {
+            g.tagged = victim_key;
+            g.role = 1;
+        } else if (g.area == 0x1A && g.mirror_on && !g.elite_done) {
+            g.tagged = victim_key;
+            g.role = 3;
+            if (g.elite_hp <= 0) g.elite_hp = g.elite_max;
+        } else {
+            return -1;
+        }
+    }
+    if (g.role == 1) return g.titan_hp;
+    if (g.role == 3) return g.elite_hp;
+    return -1;
+}
+
+int on_hurt(int victim_key, bool victim_is_player, int damage) {
     if (victim_is_player || damage <= 0) return damage;
     if (g.spar_index >= 0) {
         strike_sparring(damage);
         return 0;
     }
-    if (g.titan_alive) {
-        g.titan_hp -= damage;
-        if (g.titan_hp <= 0) {
+    if (claim_actor(victim_key) < 0) return damage;
+    if (g.role == 1) {
+        g.titan_hp = std::max(0, g.titan_hp - damage);
+        if (g.titan_hp == 0) {
             g.titan_alive = false;
+            g.tagged = 0;
             defeat_titan();
+            return 32767;
         }
         return 0;
     }
-    if (g.elite_hp > 0) {
-        const EliteHit hit = strike_elite(EliteKind::Shield, g.elite_hp, damage, g.elite_front, true);
-        g.elite_hp = hit.hp;
-        if (!hit.damaged) return 0;
-        if (g.elite_hp > 0 && g.elite_hp < 18) {
-            queue_spawn(2, 2, "split");
-            g.elite_hp = 0;
-        }
-        return damage;
+    const EliteKind kind = g.elite_kind == 1 ? EliteKind::Split : g.elite_kind == 2 ? EliteKind::Burrow : EliteKind::Shield;
+    const bool surfaced = kind != EliteKind::Burrow || !g.elite_front;
+    const EliteHit hit = strike_elite(kind, g.elite_hp, damage, g.elite_front, surfaced);
+    if (!hit.damaged) {
+        g.elite_front = false;
+        return 0;
     }
-    return damage;
+    g.elite_hp = hit.hp;
+    if (hit.spawned > 0) {
+        g.elite_hp = std::max(1, hit.hp / 2);
+    }
+    if (g.elite_hp == 0) {
+        g.elite_done = true;
+        g.tagged = 0;
+        return 32767;
+    }
+    return 0;
 }
 
 RgbTint scene_tint() {
@@ -771,6 +829,11 @@ std::vector<int> flag_writes() {
     if (journals_complete()) push_flag(out, JournalsComplete);
     if (g.disc_played) push_flag(out, DiscPlayed);
     if (g.paint_open[1] || g.paint_open[2] || g.paint_open[3]) push_flag(out, PaintUnlocked);
+    if (g.mirror_on) push_flag(out, EliteEnabled);
+    if (g.elite_done) push_flag(out, MirrorCleared0);
+    if (g.custodian_done) push_flag(out, CustodianSeen);
+    if (g.titan_fought && !g.titan_alive) push_flag(out, TitanDown);
+    if (g.rival_won) push_flag(out, RivalWon);
     return out;
 }
 
@@ -788,6 +851,12 @@ std::string serialize() {
     out << "spar=";
     for (bool claimed : g.spar_prize) out << (claimed ? '1' : '0');
     out << "\n";
+    out << "mirror=" << (g.mirror_on ? 1 : 0) << "\n";
+    out << "elite_done=" << (g.elite_done ? 1 : 0) << "\n";
+    out << "titan_fought=" << (g.titan_fought ? 1 : 0) << "\n";
+    out << "titan_alive=" << (g.titan_alive ? 1 : 0) << "\n";
+    out << "custodian_done=" << (g.custodian_done ? 1 : 0) << "\n";
+    out << "rival_won=" << (g.rival_won ? 1 : 0) << "\n";
     return out.str();
 }
 
@@ -820,7 +889,14 @@ bool deserialize(const std::string& text) {
             for (size_t i = 0; i < value.size() && i < 24; i++) g.servbot[i] = value[i] == '1';
         } else if (key == "spar") {
             for (size_t i = 0; i < value.size() && i < 5; i++) g.spar_prize[i] = value[i] == '1';
-        }
+        } else if (key == "mirror") g.mirror_on = value == "1";
+        else if (key == "elite_done") g.elite_done = value == "1";
+        else if (key == "titan_fought") g.titan_fought = value == "1";
+        else if (key == "titan_alive") {
+            g.titan_alive = value == "1";
+            if (g.titan_alive) g.titan_hp = 120;
+        } else if (key == "custodian_done") g.custodian_done = value == "1";
+        else if (key == "rival_won") g.rival_won = value == "1";
     }
     g.trophy = g.lab;
     return true;
@@ -853,24 +929,24 @@ void bind_save_folder(const std::string& folder) {
 
 std::vector<ItemReport> reports() {
     return {
-        {24, ItemStatus::Partial, "Sunken sub-gate", "Coolant flag 0xC04 in area 0x19 slows and tints. No flooded mesh."},
+        {24, ItemStatus::Blocked, "Sunken sub-gate", "No confirmed player-speed field, so the live actor is not slowed."},
         {25, ItemStatus::Done, "Collapse digs", "Timer, bank, and failure. Uses the current ruin."},
-        {26, ItemStatus::Partial, "Mirror ruins", "Area 0x1A queues remix slots. No new actors are spawned."},
-        {27, ItemStatus::Partial, "Elite variants", "Hurt hook shields and splits. Tint uses bgPrim at 0x80204894."},
-        {28, ItemStatus::Partial, "Mimic chest", "Safe only when sonar flag 0xC02 or a 0xC80 mark is set."},
+        {26, ItemStatus::Blocked, "Mirror ruins", "No confirmed actor-spawn function, so remix slots are never created."},
+        {27, ItemStatus::Done, "Elite variants", "The actor you hit in the gate is shielded, then damaged. Tint is bgPrim."},
+        {28, ItemStatus::Blocked, "Mimic chest", "No chest-open function is hooked, so a mimic never intercepts an open."},
         {29, ItemStatus::Done, "Bonne sparring", "Five rematches, part prizes, no story flags."},
-        {30, ItemStatus::Partial, "The Custodian", "Flag 0xCA0 sets floor 10. No new boss mesh."},
-        {31, ItemStatus::Partial, "Roaming titan", "Play-time halfword 0x801BC3F6 arms it. No giant actor."},
-        {32, ItemStatus::Partial, "Rival digger", "Leaving area 0x1A finishes the race. No rival model."},
+        {30, ItemStatus::Blocked, "The Custodian", "0xCA0 is not a floor count, and there is no custodian actor to attach."},
+        {31, ItemStatus::Done, "Roaming titan", "After the play-time halfword, the next actor you hit in area 0x1A is the titan."},
+        {32, ItemStatus::Done, "Rival digger", "Leaving area 0x1A pays zenny back into 0x801BC406."},
         {33, ItemStatus::Done, "Digger's Guild board", "Six repeatable contracts and payouts."},
         {34, ItemStatus::Done, "Lost Servbots", "Twenty-four hints and tier rewards."},
-        {35, ItemStatus::Partial, "Old City rebuild", "Shops and a warm bgPrim tint. No district mesh."},
+        {35, ItemStatus::Done, "Old City rebuild", "Entering area 0x12 spends the next stage cost and warms bgPrim."},
         {36, ItemStatus::Done, "News photo jobs", "Area-matched shots while photo mode is on."},
-        {37, ItemStatus::Partial, "Flutter refit", "Fusion flag 0xC0D enables material. Lab still needs three parts."},
+        {37, ItemStatus::Done, "Flutter refit", "Docking at 0x1B with grapple, sonar, and fusion opens the lab."},
         {38, ItemStatus::Done, "Parts appraiser", "Fee by rarity, original junk names."},
         {39, ItemStatus::Done, "Courier job", "Skate deliveries with a time bonus."},
         {40, ItemStatus::Done, "Refractor exchange", "Daily price, twenty-shard cap."},
-        {41, ItemStatus::Partial, "Lake fishing", "Catch table only. No rod scene, so the tick never casts."},
+        {41, ItemStatus::Blocked, "Lake fishing", "No confirmed action-button address, so a cast cannot be read."},
         {42, ItemStatus::Done, "Weapon range", "Best score per weapon, no zenny spent."},
         {43, ItemStatus::Done, "Digger journals", "Eight original pages. A full set opens the vault flag."},
         {44, ItemStatus::Done, "Music discs", "Track index only. Audio is the player's own disc at runtime."},
