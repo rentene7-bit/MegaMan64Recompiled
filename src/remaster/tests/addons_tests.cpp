@@ -330,6 +330,14 @@ int run_addon_tests() {
     expect(bounced_off.kicked && bounced_off.vel_x == -10, "wall kick reverses a stuck step in a shaft");
     touching.in_shaft = false;
     expect(!wall_contact(touching).kicked, "wall kick ignores a stuck step outside a shaft");
+
+    addon_reset();
+    world = rich();
+    addon_command(AddonVerb::FindJunk, AddonId::Analyzer, world);
+    addon_command(AddonVerb::Build, AddonId::Analyzer, world);
+    addon_note_enemy_hit(40, 7);
+    const std::string hud = addon_hud_line();
+    expect(hud.find("HP 40") != std::string::npos && hud.find("hit 7") != std::string::npos, "analyzer shows hp and the last hit");
     seek.to_x = 0;
     seek.to_z = 0;
     expect(steer_shot(seek).vel_x == 0, "arc chain keeps its velocity without a victim");

@@ -183,7 +183,7 @@ extern "C" void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx) {
     remaster::addon_set_yank(out.yank_left);
     ctx->r17 = static_cast<gpr>(static_cast<int64_t>(out.amount));
     if (!is_player && guest_ram(victim)) {
-        remaster::addon_note_enemy_hp(MEM_H(0x6E, victim));
+        remaster::addon_note_enemy_hit(MEM_H(0x6E, victim), out.amount);
         remaster::addon_note_victim(victim);
         remaster::addon_note_victim_pos(MEM_W(0x1C, victim), MEM_W(0x24, victim));
         if (out.zero_velocity) {

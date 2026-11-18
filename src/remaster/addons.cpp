@@ -70,6 +70,7 @@ struct State {
     int chain_left = 0;
     bool scene_reload = false;
     int enemy_hp = -1;
+    int last_damage = -1;
     int decoy_ticks = 0;
     int stagger_left = 0;
     bool yank = false;
@@ -872,6 +873,13 @@ void addon_note_enemy_hp(int hp) {
     }
 }
 
+void addon_note_enemy_hit(int hp, int damage) {
+    addon_note_enemy_hp(hp);
+    if (damage > 0) {
+        g.last_damage = damage;
+    }
+}
+
 std::string addon_hud_line() {
     std::ostringstream out;
     if (g.built[index_of(AddonId::Patch)]) {
@@ -881,11 +889,14 @@ std::string addon_hud_line() {
         if (!out.str().empty()) {
             out << "  ";
         }
-        out << "Analyzer ";
+        out << "Analyzer HP ";
         if (g.enemy_hp < 0) {
             out << "--";
         } else {
             out << g.enemy_hp;
+        }
+        if (g.last_damage >= 0) {
+            out << " hit " << g.last_damage;
         }
     }
     return out.str();

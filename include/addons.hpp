@@ -256,6 +256,7 @@ bool addon_charge_built();
 bool addon_request_scene_reload();
 bool addon_take_scene_reload();
 void addon_note_enemy_hp(int hp);
+void addon_note_enemy_hit(int hp, int damage);
 std::string addon_hud_line();
 std::string addon_menu_line();
 MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft, int pos_x, int pos_z);
