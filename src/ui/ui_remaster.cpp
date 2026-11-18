@@ -1,15 +1,20 @@
 #include "remaster_ui.h"
 
+#include "addons.hpp"
 #include "recomp_ui.h"
 #include "zelda_support.h"
 
 #include "RmlUi/Core.h"
 
 #include <chrono>
+#include <string>
 
 namespace {
 
 recompui::ContextId title_context = recompui::ContextId::null();
+recompui::ContextId hud_context = recompui::ContextId::null();
+bool hud_ready = false;
+bool hud_shown = false;
 bool title_ready = false;
 bool title_shown = false;
 std::chrono::steady_clock::time_point title_shown_at{};
@@ -66,7 +71,41 @@ void remaster_ui::on_game_buttons(uint16_t buttons) {
     }
 }
 
+void update_addon_hud(bool game_started) {
+    if (!hud_ready) {
+        hud_context = recompui::create_context(zelda64::get_asset_path("addon_hud.rml"));
+        hud_context.set_captures_input(false);
+        hud_context.set_captures_mouse(false);
+        if (Rml::ElementDocument* document = hud_context.get_document()) {
+            document->Hide();
+        }
+        hud_ready = true;
+    }
+    const std::string line = game_started ? remaster::addon_hud_line() : std::string();
+    Rml::ElementDocument* document = hud_context.get_document();
+    if (document == nullptr) {
+        return;
+    }
+    if (line.empty()) {
+        if (hud_shown) {
+            recompui::hide_context(hud_context);
+            hud_shown = false;
+        }
+        return;
+    }
+    if (Rml::Element* row = document->GetElementById("addon-hud")) {
+        row->SetInnerRML(line);
+    }
+    if (!hud_shown) {
+        hud_context.set_captures_input(false);
+        hud_context.set_captures_mouse(false);
+        recompui::show_context(hud_context, "");
+        hud_shown = true;
+    }
+}
+
 void remaster_ui::on_frame(bool game_started) {
+    update_addon_hud(game_started);
     if (!game_started) {
         hide_title();
         return;

@@ -1,0 +1,27 @@
+<rml>
+<head>
+    <title>Add-ons</title>
+    <link type="text/rcss" href="rml.rcss"/>
+    <style>
+        body {
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0);
+            font-family: LatoLatin;
+            pointer-events: none;
+        }
+        #addon-hud {
+            position: absolute;
+            left: 24dp;
+            bottom: 24dp;
+            color: #f4f7fb;
+            font-size: 18dp;
+            background: rgba(0, 0, 0, 0.45);
+            padding: 6dp 10dp;
+        }
+    </style>
+</head>
+<body>
+    <div id="addon-hud"></div>
+</body>
+</rml>
