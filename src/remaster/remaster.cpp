@@ -1,5 +1,6 @@
 #include "disc_internal.hpp"
 #include "remaster.hpp"
+#include "remaster_addons.hpp"
 #include "remaster_flags.h"
 
 #include <algorithm>
@@ -85,6 +86,7 @@ bool copy_file_limited(const std::filesystem::path& from, const std::filesystem:
 
 void set_app_folder(const std::filesystem::path& folder) {
     g_app_folder = folder;
+    addons::bind_save_folder(folder.string());
 }
 
 std::filesystem::path app_folder() {
@@ -94,6 +96,10 @@ std::filesystem::path app_folder() {
 void set_disc_path(const std::filesystem::path& path) {
     stop_ps1_audio();
     disc::load(path);
+    addons::set_disc_player(
+        [](int disc_index) { return jukebox_track_count(disc_index); },
+        [](int disc_index, int track) { return play_jukebox(disc_index, track); }
+    );
 }
 
 std::filesystem::path disc_path() {
