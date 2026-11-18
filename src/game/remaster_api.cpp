@@ -65,6 +65,9 @@ void apply_edit(uint8_t* rdram, int32_t player, const remaster::AddonEdit& edit)
     for (int i = 0; i < edit.flag_count; ++i) {
         write_flag(rdram, edit.flags_to_set[i]);
     }
+    if (edit.note.find("Pocket Relay") != std::string::npos) {
+        remaster::request_field_save();
+    }
     if (edit.note.find("fused") != std::string::npos) {
         const int64_t part = guest_at(remaster::kPartByteGuest);
         const int hybrid = remaster::fusion_part_byte(MEM_BU(0, part), MEM_BU(0, part + 1));
@@ -123,6 +126,16 @@ void remember_player(uint8_t* rdram, int32_t player) {
         }
         MEM_H(0x48, player) = static_cast<int16_t>(next);
     }
+    const int sentry = remaster::addon_take_sentry_damage();
+    const int32_t sentry_target = remaster::addon_victim();
+    if (sentry > 0 && guest_ram(sentry_target)) {
+        int hp = MEM_H(0x6E, sentry_target) - sentry;
+        if (hp < 0) {
+            hp = 0;
+        }
+        MEM_H(0x6E, sentry_target) = static_cast<int16_t>(hp);
+        remaster::addon_note_enemy_hp(hp);
+    }
     /* Absolute address confirmed on pc1. 0 is Remove, 2 is Machine Buster. */
     const int64_t equipped_at = static_cast<int64_t>(static_cast<int32_t>(0x80204B20));
     const int pending = remaster::take_equipped_weapon_write();
@@ -153,13 +166,38 @@ extern "C" void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx) {
     hit.amount = scaled;
     hit.victim_is_player = is_player;
     hit.heavy = remaster::addon_heavy_pending();
-    hit.chain = remaster::addon_chain_pending();
+    hit.chain = remaster::addon_chain_hits();
+    hit.decoy = remaster::addon_decoy_ticks() > 0;
+    hit.coolant = remaster::addon_built(remaster::AddonId::Coolant);
+    hit.bounce_penalty = remaster::addon_built(remaster::AddonId::Bounce);
+    hit.disc = remaster::addon_built(remaster::AddonId::Disc);
+    hit.yank = remaster::addon_yank_armed();
+    hit.stagger = remaster::addon_stagger_left();
+    hit.resonance = remaster::addon_built(remaster::AddonId::Resonance);
+    hit.mastery = remaster::addon_mastery_bonus();
     const remaster::OutgoingHitOut out = remaster::adjust_outgoing_hit(hit);
     remaster::addon_set_heavy(out.heavy_left);
-    remaster::addon_set_chain(out.chain_left);
+    remaster::addon_store_chain(out.chain_left);
+    remaster::addon_set_stagger(out.stagger_left);
+    remaster::addon_set_yank(out.yank_left);
     ctx->r17 = static_cast<gpr>(static_cast<int64_t>(out.amount));
     if (!is_player && guest_ram(victim)) {
         remaster::addon_note_enemy_hp(MEM_H(0x6E, victim));
+        remaster::addon_note_victim(victim);
+        if (out.zero_velocity) {
+            MEM_H(0x44, victim) = 0;
+            MEM_H(0x48, victim) = 0;
+        }
+        if (out.knockback != 0) {
+            int next = MEM_H(0x48, victim) + out.knockback;
+            if (next > 32767) {
+                next = 32767;
+            }
+            if (next < -32768) {
+                next = -32768;
+            }
+            MEM_H(0x48, victim) = static_cast<int16_t>(next);
+        }
     }
 }
 
@@ -169,9 +207,16 @@ extern "C" void remaster_shot_spawn(uint8_t* rdram, recomp_context* ctx) {
     in.half = static_cast<int>(ctx->r2);
     in.charge_built = remaster::addon_charge_built();
     in.charge_meter = remaster::addon_charge_meter();
+    in.locked = remaster::addon_buster_locked();
     const remaster::ShotSpawnOut out = remaster::adjust_shot_spawn(in);
     ctx->r2 = static_cast<gpr>(out.half);
     remaster::addon_set_charge_meter(out.charge_meter);
+    if (out.locked) {
+        const int32_t shot = static_cast<int32_t>(ctx->r17);
+        if (static_cast<uint32_t>(shot) >= 0x80000000u && static_cast<uint32_t>(shot) < 0x80800000u) {
+            MEM_B(0x3, shot) = static_cast<int8_t>(0x80);
+        }
+    }
     if (out.heavy) {
         remaster::addon_set_heavy(true);
     }
@@ -194,6 +239,7 @@ extern "C" void remaster_shot_hit(uint8_t* rdram, recomp_context* ctx) {
     in.pierce = remaster::addon_built(remaster::AddonId::Pierce);
     in.bounce = remaster::addon_built(remaster::AddonId::Bounce);
     in.arc = remaster::addon_built(remaster::AddonId::Arc);
+    in.disc = remaster::addon_built(remaster::AddonId::Disc);
     const remaster::ShotHitOut out = remaster::adjust_shot_hit(in);
     if (!out.keep) {
         return;

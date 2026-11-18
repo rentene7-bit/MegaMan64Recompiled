@@ -198,6 +198,94 @@ int run_addon_tests() {
     expect(addon_take_scene_reload(), "descending requests the scene reload");
     tools::note_deep_gate_floor(4);
     expect(tools::deep_gate_floor() == 4, "the other branch can record a floor");
+    OutgoingHit soaked;
+    soaked.amount = 8;
+    soaked.victim_is_player = true;
+    soaked.decoy = true;
+    expect(adjust_outgoing_hit(soaked).amount == 4, "decoy halves damage taken");
+
+    OutgoingHit cold;
+    cold.amount = 5;
+    cold.coolant = true;
+    OutgoingHitOut slowed = adjust_outgoing_hit(cold);
+    expect(slowed.amount == 10 && slowed.zero_velocity, "coolant hits harder and stops the victim");
+
+    ShotHit disc_hit;
+    disc_hit.alive = 0x80;
+    disc_hit.vel_x = 4;
+    disc_hit.disc = true;
+    ShotHitOut bounce1 = adjust_shot_hit(disc_hit);
+    disc_hit.tag = bounce1.tag;
+    ShotHitOut bounce2 = adjust_shot_hit(disc_hit);
+    disc_hit.tag = bounce2.tag;
+    ShotHitOut bounce3 = adjust_shot_hit(disc_hit);
+    disc_hit.tag = bounce3.tag;
+    expect(bounce1.keep && bounce2.keep && bounce3.keep, "the disc bounces three times");
+    expect(!adjust_shot_hit(disc_hit).keep, "the disc dies on the fourth impact");
+    OutgoingHit disc_damage;
+    disc_damage.amount = 2;
+    disc_damage.disc = true;
+    expect(adjust_outgoing_hit(disc_damage).amount == 6, "disc hits deal triple damage");
+
+    ShotSpawn overheated;
+    overheated.locked = true;
+    overheated.half = kShotLight;
+    expect(adjust_shot_spawn(overheated).locked && adjust_shot_spawn(overheated).half == 0, "overclock lock suppresses the shot");
+
+    OutgoingHit skilled;
+    skilled.amount = 4;
+    skilled.mastery = 2;
+    expect(adjust_outgoing_hit(skilled).amount == 6, "mastery adds its perk");
+
+    OutgoingHit soft;
+    soft.amount = 8;
+    soft.bounce_penalty = true;
+    expect(adjust_outgoing_hit(soft).amount == 6, "bounce lens lowers attack");
+
+    OutgoingHit yanked;
+    yanked.amount = 3;
+    yanked.yank = true;
+    OutgoingHitOut pull = adjust_outgoing_hit(yanked);
+    expect(pull.amount == 6 && !pull.yank_left, "grapple yank spends itself");
+
+    OutgoingHit pulse;
+    pulse.amount = 4;
+    pulse.stagger = 2;
+    OutgoingHitOut pulsed = adjust_outgoing_hit(pulse);
+    expect(pulsed.zero_velocity && pulsed.stagger_left == 1, "sonar stagger stops the victim");
+
+    OutgoingHit shove;
+    shove.amount = 4;
+    shove.resonance = true;
+    expect(adjust_outgoing_hit(shove).knockback == 8, "resonance knocks the victim back");
+
+    addon_reset();
+    expect(lantern_fog_bonus() == 0, "lantern is dark until it is built");
+    world = rich();
+    addon_command(AddonVerb::FindJunk, AddonId::Lantern, world);
+    addon_command(AddonVerb::Build, AddonId::Lantern, world);
+    expect(lantern_fog_bonus() == 150, "lantern pushes fog");
+
+    addon_reset();
+    world = rich();
+    addon_command(AddonVerb::FindJunk, AddonId::Magnet, world);
+    addon_command(AddonVerb::Build, AddonId::Magnet, world);
+    world.zenny = 40;
+    addon_tick(world);
+    world.zenny = 80;
+    AddonEdit caught = addon_tick(world);
+    expect(caught.zenny_delta == 10, "magnet adds a quarter of a small gain");
+
+    addon_reset();
+    world = rich();
+    addon_command(AddonVerb::FindJunk, AddonId::Sentry, world);
+    addon_command(AddonVerb::Build, AddonId::Sentry, world);
+    addon_note_victim(0x802049B0);
+    int sentry_hits = 0;
+    for (int i = 0; i < 45; ++i) {
+        sentry_hits += addon_take_sentry_damage();
+    }
+    expect(sentry_hits == 4, "sentry chips the last actor once it is due");
 
     return g_failed;
 }

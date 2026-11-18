@@ -112,6 +112,7 @@ struct ShotSpawn {
     int half = kShotLight;
     bool charge_built = false;
     int charge_meter = 0;
+    bool locked = false;
 };
 
 struct ShotSpawnOut {
@@ -119,6 +120,7 @@ struct ShotSpawnOut {
     int charge_meter = 0;
     bool zero_rapid = false;
     bool heavy = false;
+    bool locked = false;
 };
 
 ShotSpawnOut adjust_shot_spawn(const ShotSpawn& in);
@@ -131,6 +133,7 @@ struct ShotHit {
     bool pierce = false;
     bool bounce = false;
     bool arc = false;
+    bool disc = false;
 };
 
 struct ShotHitOut {
@@ -148,13 +151,25 @@ struct OutgoingHit {
     int amount = 0;
     bool victim_is_player = false;
     bool heavy = false;
-    bool chain = false;
+    int chain = 0;
+    bool decoy = false;
+    bool coolant = false;
+    bool bounce_penalty = false;
+    bool disc = false;
+    bool yank = false;
+    int stagger = 0;
+    bool resonance = false;
+    int mastery = 0;
 };
 
 struct OutgoingHitOut {
     int amount = 0;
     bool heavy_left = false;
-    bool chain_left = false;
+    int chain_left = 0;
+    bool yank_left = false;
+    int stagger_left = 0;
+    bool zero_velocity = false;
+    int knockback = 0;
 };
 
 OutgoingHitOut adjust_outgoing_hit(const OutgoingHit& in);
@@ -176,7 +191,20 @@ void addon_set_charge_meter(int value);
 void addon_set_heavy(bool heavy);
 bool addon_heavy_pending();
 void addon_set_chain(bool chain);
+void addon_store_chain(int hits);
 bool addon_chain_pending();
+int addon_chain_hits();
+bool addon_buster_locked();
+int addon_decoy_ticks();
+int addon_stagger_left();
+void addon_set_stagger(int hits);
+bool addon_yank_armed();
+void addon_set_yank(bool armed);
+int addon_mastery_bonus();
+int lantern_fog_bonus();
+void addon_note_victim(int address);
+int addon_victim();
+int addon_take_sentry_damage();
 int addon_charge_meter();
 bool addon_charge_built();
 bool addon_request_scene_reload();

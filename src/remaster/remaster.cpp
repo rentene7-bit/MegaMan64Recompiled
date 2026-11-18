@@ -1,3 +1,4 @@
+#include "addons.hpp"
 #include "disc_internal.hpp"
 #include "remaster.hpp"
 #include "remaster_flags.h"
@@ -403,7 +404,8 @@ int bilerp_mode() {
 
 void adjust_fog(int16_t& start, int16_t& end) {
     const DrawDistance level = draw_distance();
-    if (level == DrawDistance::Off) {
+    const int lamp = lantern_fog_bonus();
+    if (level == DrawDistance::Off && lamp <= 0) {
         return;
     }
     int fog_start = start;
@@ -426,15 +428,18 @@ void adjust_fog(int16_t& start, int16_t& end) {
         return;
     }
     /* Low is a small, fill-rate-friendly push. Medium goes further and is still capped. */
-    const int scale_q8 = level == DrawDistance::Low ? 294 : 346;
-    int extra = ((fog_end - fog_start) * (scale_q8 - 256)) / 256;
-    if (extra < 0) {
-        extra = 0;
+    int extra = 0;
+    if (level != DrawDistance::Off) {
+        const int scale_q8 = level == DrawDistance::Low ? 294 : 346;
+        extra = ((fog_end - fog_start) * (scale_q8 - 256)) / 256;
+        if (extra < 0) {
+            extra = 0;
+        }
+        if (extra > 400) {
+            extra = 400;
+        }
     }
-    if (extra > 400) {
-        extra = 400;
-    }
-    fog_end += extra;
+    fog_end += extra + lamp;
     if (fog_end > 1000) {
         fog_end = 1000;
     }
@@ -517,6 +522,10 @@ WindowFit fit_window_to_display(int desired_w, int desired_h, int display_w, int
         fit.height = 1;
     }
     return fit;
+}
+
+void request_field_save() {
+    g_last_autosave = {};
 }
 
 void tick_autosave() {

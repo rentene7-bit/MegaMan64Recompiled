@@ -67,9 +67,16 @@ struct State {
     bool kick_request = false;
     bool kicked = false;
     bool heavy_pending = false;
-    bool chain_pending = false;
+    int chain_left = 0;
     bool scene_reload = false;
     int enemy_hp = -1;
+    int decoy_ticks = 0;
+    int stagger_left = 0;
+    bool yank = false;
+    int pull_left = 0;
+    int sentry_ticks = 0;
+    int victim = 0;
+    int seen_zenny = -1;
 };
 
 State g;
@@ -162,6 +169,7 @@ AddonEdit ping(const AddonView& world) {
     }
     g.pinged[slot] = true;
     g.built[index_of(AddonId::Vaults)] = true;
+    g.stagger_left = 3;
     edit.note = "Sonar marked a sealed vault.";
     note_flag(edit, kAddonFlagOrigin + 0x80 + slot);
     return edit;
@@ -288,9 +296,18 @@ void gear_tick(const AddonView& world, AddonEdit& edit) {
             edit.hp_delta += 1;
         }
     }
-    if (g.built[index_of(AddonId::Overclock)]) {
-        g.heat = std::min(100, g.heat + 1);
+    if (g.decoy_ticks > 0) {
+        g.decoy_ticks -= 1;
     }
+    if (g.built[index_of(AddonId::Magnet)] && g.seen_zenny >= 0 && world.zenny > g.seen_zenny) {
+        const int gain = world.zenny - g.seen_zenny;
+        if (gain > 0 && gain <= 200) {
+            const int bonus = std::max(1, gain / 4);
+            edit.zenny_delta += bonus;
+            edit.note = "Zenny magnet caught a drop.";
+        }
+    }
+    g.seen_zenny = world.zenny + edit.zenny_delta;
     if (g.built[index_of(AddonId::Charge)] && g.charge > 3) {
         g.charge = 3;
     }
@@ -422,7 +439,14 @@ AddonEdit addon_command(AddonVerb verb, AddonId id, const AddonView& world) {
             return edit;
         }
         if (id == AddonId::Grapple) {
-            edit.note = "Grapple is ready. Vault rings use it; the pull reuses the vanilla step.";
+            g.pull_left = 6;
+            g.yank = true;
+            edit.note = "Grapple pull. The next hit yanks.";
+            return edit;
+        }
+        if (id == AddonId::Decoy) {
+            g.decoy_ticks = 180;
+            edit.note = "Decoy beacon is soaking hits.";
             return edit;
         }
         if (id == AddonId::Dash) {
@@ -579,6 +603,11 @@ ShotSpawnOut adjust_shot_spawn(const ShotSpawn& in) {
     out.half = in.half;
     out.charge_meter = in.charge_meter;
     out.zero_rapid = in.charge_built;
+    if (in.locked) {
+        out.locked = true;
+        out.half = 0;
+        return out;
+    }
     if (in.charge_built && in.charge_meter >= 3) {
         out.half = kShotHeavy;
         out.charge_meter = 0;
@@ -600,6 +629,15 @@ ShotHitOut adjust_shot_hit(const ShotHit& in) {
         out.keep = true;
         out.alive = 0;
         out.tag = in.tag | 1;
+        return out;
+    }
+    const int disc_used = (in.tag >> 3) & 7;
+    if (in.disc && disc_used < 3) {
+        out.keep = true;
+        out.alive = 0;
+        out.tag = (in.tag & 7) | ((disc_used + 1) << 3);
+        out.vel_x = -in.vel_x;
+        out.vel_z = -in.vel_z;
         return out;
     }
     if (in.bounce && (in.tag & 2) == 0) {
@@ -625,16 +663,52 @@ OutgoingHitOut adjust_outgoing_hit(const OutgoingHit& in) {
     out.amount = in.amount;
     out.heavy_left = in.heavy;
     out.chain_left = in.chain;
-    if (in.victim_is_player || in.amount <= 0) {
+    out.yank_left = in.yank;
+    out.stagger_left = in.stagger;
+    if (in.amount <= 0) {
         return out;
     }
+    if (in.victim_is_player) {
+        if (in.decoy && out.amount > 1) {
+            out.amount /= 2;
+        }
+        return out;
+    }
+    if (in.mastery > 0) {
+        const int perk = in.mastery > 3 ? 3 : in.mastery;
+        out.amount += perk;
+    }
     if (in.heavy) {
-        out.amount = in.amount * 3;
+        out.amount *= 3;
         out.heavy_left = false;
     }
-    if (in.chain) {
+    if (in.chain > 0) {
         out.amount *= 2;
-        out.chain_left = false;
+        out.chain_left = in.chain - 1;
+    }
+    if (in.coolant) {
+        out.amount *= 2;
+        out.zero_velocity = true;
+    }
+    if (in.disc) {
+        out.amount *= 3;
+    }
+    if (in.bounce_penalty && !in.disc && out.amount > 1) {
+        out.amount = (out.amount * 3) / 4;
+        if (out.amount < 1) {
+            out.amount = 1;
+        }
+    }
+    if (in.yank) {
+        out.amount *= 2;
+        out.yank_left = false;
+    }
+    if (in.stagger > 0) {
+        out.zero_velocity = true;
+        out.stagger_left = in.stagger - 1;
+    }
+    if (in.resonance) {
+        out.knockback = 8;
     }
     return out;
 }
@@ -669,15 +743,19 @@ MoveStep step_motion(MoveStep in, bool want_dash, bool want_kick, bool in_shaft)
 }
 
 void addon_hold_fire(bool held) {
-    if (!g.built[index_of(AddonId::Charge)]) {
-        return;
+    if (g.built[index_of(AddonId::Charge)]) {
+        if (held) {
+            g.charge = std::min(3, g.charge + 1);
+        } else if (g.charge < 3) {
+            g.charge = 0;
+        }
     }
-    if (held) {
-        g.charge = std::min(3, g.charge + 1);
-        return;
-    }
-    if (g.charge < 3) {
-        g.charge = 0;
+    if (g.built[index_of(AddonId::Overclock)]) {
+        if (held) {
+            g.heat = std::min(100, g.heat + 4);
+        } else if (g.heat > 0) {
+            g.heat -= 1;
+        }
     }
 }
 
@@ -736,6 +814,10 @@ MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft) {
     in.kicked = g.kicked;
     const bool shaft = in_shaft && g.built[index_of(AddonId::WallKick)];
     MoveStep out = step_motion(in, false, g.kick_request, shaft);
+    if (g.pull_left > 0) {
+        out.vel_x += 24;
+        g.pull_left -= 1;
+    }
     g.dash_left = out.dash_left;
     g.kicked = out.kicked;
     g.kick_request = false;
@@ -755,11 +837,77 @@ bool addon_heavy_pending() {
 }
 
 void addon_set_chain(bool chain) {
-    g.chain_pending = chain;
+    g.chain_left = chain ? 3 : 0;
+}
+
+void addon_store_chain(int hits) {
+    g.chain_left = hits < 0 ? 0 : hits;
 }
 
 bool addon_chain_pending() {
-    return g.chain_pending;
+    return g.chain_left > 0;
+}
+
+int addon_chain_hits() {
+    return g.chain_left;
+}
+
+bool addon_buster_locked() {
+    return g.built[index_of(AddonId::Overclock)] && g.heat >= 100;
+}
+
+int addon_decoy_ticks() {
+    return g.decoy_ticks;
+}
+
+int addon_stagger_left() {
+    return g.stagger_left;
+}
+
+void addon_set_stagger(int hits) {
+    g.stagger_left = hits < 0 ? 0 : hits;
+}
+
+bool addon_yank_armed() {
+    return g.yank;
+}
+
+void addon_set_yank(bool armed) {
+    g.yank = armed;
+}
+
+int addon_mastery_bonus() {
+    int best = 0;
+    for (int perk : g.mastery) {
+        if (perk > best) {
+            best = perk;
+        }
+    }
+    return best > 3 ? 3 : best;
+}
+
+int lantern_fog_bonus() {
+    return g.built[index_of(AddonId::Lantern)] ? 150 : 0;
+}
+
+void addon_note_victim(int address) {
+    g.victim = address;
+}
+
+int addon_victim() {
+    return g.victim;
+}
+
+int addon_take_sentry_damage() {
+    if (!g.built[index_of(AddonId::Sentry)] || g.victim == 0) {
+        return 0;
+    }
+    g.sentry_ticks += 1;
+    if (g.sentry_ticks < 45) {
+        return 0;
+    }
+    g.sentry_ticks = 0;
+    return 4 + 2 * g.level[index_of(AddonId::Sentry)];
 }
 
 namespace tools {
