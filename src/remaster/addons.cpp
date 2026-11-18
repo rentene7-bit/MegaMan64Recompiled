@@ -441,6 +441,11 @@ AddonEdit addon_command(AddonVerb verb, AddonId id, const AddonView& world) {
         if (id == AddonId::Grapple) {
             g.pull_left = 6;
             g.yank = true;
+            AddonEdit opened = open_vault(world);
+            if (opened.zenny_delta > 0) {
+                opened.note = "Grapple pulled the vault open.";
+                return opened;
+            }
             edit.note = "Grapple pull. The next hit yanks.";
             return edit;
         }

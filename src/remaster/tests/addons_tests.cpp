@@ -287,5 +287,16 @@ int run_addon_tests() {
     }
     expect(sentry_hits == 4, "sentry chips the last actor once it is due");
 
+    addon_reset();
+    world = rich();
+    addon_command(AddonVerb::FindJunk, AddonId::Sonar, world);
+    addon_command(AddonVerb::Build, AddonId::Sonar, world);
+    addon_command(AddonVerb::FindJunk, AddonId::Grapple, world);
+    addon_command(AddonVerb::Build, AddonId::Grapple, world);
+    world.area = 0x13;
+    addon_command(AddonVerb::Ping, AddonId::Sonar, world);
+    AddonEdit grabbed = addon_command(AddonVerb::UseGear, AddonId::Grapple, world);
+    expect(grabbed.zenny_delta == 1200, "grapple action opens the marked vault");
+
     return g_failed;
 }
