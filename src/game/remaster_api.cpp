@@ -2,6 +2,7 @@
 #include "librecomp/helpers.hpp"
 #include "recomp_ui.h"
 #include "remaster.hpp"
+#include "remaster_addons.hpp"
 #ifdef MM64R_RESEARCH
 #include "research.hpp"
 #endif
@@ -49,9 +50,72 @@ extern "C" void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx) {
     const int32_t victim = static_cast<int32_t>(ctx->r16);
     const int32_t amount = static_cast<int32_t>(ctx->r17);
     const bool known = guest_ram(player);
-    const bool is_player = known && victim == player;
-    const int scaled = remaster::scale_damage_amount(known, is_player, amount);
+    const bool tagged_player = known && victim == player;
+    const bool absolute_player = static_cast<uint32_t>(victim) == 0x802049B0u;
+    const int adjusted = remaster::addons::on_hurt(tagged_player || absolute_player, amount);
+    const int scaled = remaster::scale_damage_amount(known, tagged_player, adjusted);
     ctx->r17 = static_cast<gpr>(static_cast<int64_t>(scaled));
+}
+
+namespace {
+
+bool addon_flag_set(uint8_t* rdram, int id) {
+    const uint32_t addr = remaster::addons::kFlagGuest + static_cast<uint32_t>(id >> 3);
+    const uint8_t mask = static_cast<uint8_t>(0x80u >> (id & 7));
+    return (MEM_BU(0, static_cast<int64_t>(addr)) & mask) != 0;
+}
+
+void addon_flag_raise(uint8_t* rdram, int id) {
+    if (id < remaster::addons::kFlagLo || id > remaster::addons::kFlagHi) {
+        return;
+    }
+    const uint32_t addr = remaster::addons::kFlagGuest + static_cast<uint32_t>(id >> 3);
+    const uint8_t mask = static_cast<uint8_t>(0x80u >> (id & 7));
+    const int64_t guest = static_cast<int64_t>(addr);
+    MEM_BU(0, guest) = static_cast<uint8_t>(MEM_BU(0, guest) | mask);
+}
+
+} // namespace
+
+extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
+    (void)ctx;
+    const int area = MEM_BU(0, static_cast<int64_t>(0x801BC438));
+    const int entrance = MEM_BU(0, static_cast<int64_t>(0x801BC439));
+    const int zenny = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(0x801BC406)));
+    const int frames = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(0x801BC3F6)));
+    remaster::addons::note_zenny(zenny);
+
+    remaster::addons::NeighborView bits;
+    bits.grapple = addon_flag_set(rdram, remaster::addons::kNeighborGrapple);
+    bits.sonar = addon_flag_set(rdram, remaster::addons::kNeighborSonar);
+    bits.coolant = addon_flag_set(rdram, remaster::addons::kNeighborCoolant);
+    bits.fusion = addon_flag_set(rdram, remaster::addons::kNeighborFusion);
+    bits.deep_gate = addon_flag_set(rdram, remaster::addons::kNeighborDeepGate);
+    int marks = 0;
+    for (int slot = 0; slot < 8; slot++) {
+        if (addon_flag_set(rdram, remaster::addons::kNeighborSonarMark + slot)) {
+            marks++;
+        }
+    }
+    bits.sonar_marks = marks;
+    remaster::addons::note_neighbor(bits);
+    if (bits.coolant && area == 0x19) {
+        remaster::addons::enter_sunken();
+        remaster::addons::equip_water_gear();
+    }
+    remaster::addons::on_world(area, entrance, frames);
+
+    for (int id : remaster::addons::flag_writes()) {
+        addon_flag_raise(rdram, id);
+    }
+
+    const remaster::addons::RgbTint tint = remaster::addons::scene_tint();
+    if (tint.active) {
+        /* GfxContext at 0x802047F0, bgPrimRed/Green/Blue at +0xA4. */
+        MEM_BU(0, static_cast<int64_t>(0x80204894)) = static_cast<uint8_t>(tint.r);
+        MEM_BU(0, static_cast<int64_t>(0x80204895)) = static_cast<uint8_t>(tint.g);
+        MEM_BU(0, static_cast<int64_t>(0x80204896)) = static_cast<uint8_t>(tint.b);
+    }
 }
 
 extern "C" void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx) {

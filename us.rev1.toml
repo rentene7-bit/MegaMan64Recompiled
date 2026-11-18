@@ -188,7 +188,7 @@ text =	"rect_aspect_auto(rdram, ctx);"
 [[patches.hook]]
 func = "func_80069A64_44E64"
 before_vram = 0x80069A64
-text = "remaster_note_player_ctx(rdram, ctx);"
+text = "remaster_note_player_ctx(rdram, ctx); remaster_addons_on_player(rdram, ctx);"
 
 # Generic hurt: r16 is the victim, r17 is the damage after defense, HP is at +0x6E.
 [[patches.hook]]
