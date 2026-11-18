@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -57,6 +58,19 @@ struct State {
 
     int (*track_count)(int) = nullptr;
     bool (*play)(int, int) = nullptr;
+    bool saw_deep = false;
+    int sonar_marks = 0;
+    bool mirror_on = false;
+    int elite_hp = 0;
+    bool elite_front = true;
+    bool titan_alive = false;
+    bool titan_fought = false;
+    int titan_hp = 0;
+    bool rival_on = false;
+    double rival_time = 0;
+    int rival_area = -1;
+    SpawnRequest spawns[8] = {};
+    int spawn_count = 0;
     std::string folder;
     double save_wait = 0;
     bool loaded = false;
@@ -180,6 +194,32 @@ void reset() { g = State{}; }
 
 void set_tool_hooks(ToolHooks hooks) { g.tools = hooks; }
 ToolHooks tool_hooks() { return g.tools; }
+void note_neighbor(const NeighborView& view) {
+    if (view.grapple) g.tools.grapple = true;
+    if (view.sonar) g.tools.sonar = true;
+    if (view.coolant) g.tools.coolant = true;
+    if (view.fusion) g.tools.fusion = true;
+    if (view.sonar_marks > g.sonar_marks) g.sonar_marks = view.sonar_marks;
+    if (view.deep_gate && !g.saw_deep) {
+        g.saw_deep = true;
+        if (g.deep_floor < 10) g.deep_floor = 10;
+    }
+}
+NeighborView neighbor() {
+    NeighborView view;
+    view.grapple = g.tools.grapple;
+    view.sonar = g.tools.sonar;
+    view.coolant = g.tools.coolant;
+    view.fusion = g.tools.fusion;
+    view.deep_gate = g.saw_deep;
+    view.sonar_marks = g.sonar_marks;
+    return view;
+}
+
+static void queue_spawn(int model_id, int count, const char* role) {
+    if (g.spawn_count >= 8 || count <= 0) return;
+    g.spawns[g.spawn_count++] = SpawnRequest{model_id, count, role};
+}
 void note_story_complete(bool done) { g.story = done; }
 bool story_complete() { return g.story; }
 void note_zenny(int amount) { g.zenny = std::max(0, amount); }
@@ -460,7 +500,7 @@ bool equip_water_gear() {
     return true;
 }
 bool sunken_chest_marked() {
-    return g.sunken && g.tools.sonar;
+    return g.sunken && (g.tools.sonar || g.sonar_marks > 0);
 }
 
 bool start_collapse(int prize, double seconds) {
@@ -473,6 +513,7 @@ bool start_collapse(int prize, double seconds) {
 }
 void tick(double dt) {
     const double step = std::clamp(dt, 0.0, 0.1);
+    if (g.rival_on) g.rival_time += step;
     if (g.collapse) {
         g.collapse_left -= step;
         if (g.collapse_left <= 0) {
@@ -495,6 +536,93 @@ bool escape_collapse() {
     return true;
 }
 bool collapse_banked() { return g.collapse_banked; }
+
+void on_world(int area_id, int entrance, int play_frames) {
+    const bool changed = area_id != g.area;
+    note_area(area_id, entrance);
+    if (changed && g.rival_on) {
+        finish_race(g.rival_time, 45.0, 1000);
+        g.rival_on = false;
+    } else if (changed && area_id == 0x1A && !g.rival_on) {
+        g.rival_on = true;
+        g.rival_time = 0;
+        g.rival_area = area_id;
+        queue_spawn(0, 1, "rival");
+    }
+    if (area_id == 0x1A && !g.mirror_on) {
+        g.mirror_on = true;
+        g.elite_hp = 36;
+        const auto remix = mirror_remix(area_id);
+        for (const RemixSlot& slot : remix) {
+            queue_spawn(slot.enemy, slot.count, "mirror");
+        }
+    }
+    if (!g.titan_fought && play_frames >= 36000) {
+        g.titan_fought = true;
+        g.titan_alive = true;
+        g.titan_hp = 120;
+        queue_spawn(1, 1, "titan");
+    }
+}
+
+int on_hurt(bool victim_is_player, int damage) {
+    if (victim_is_player || damage <= 0) return damage;
+    if (g.spar_index >= 0) {
+        strike_sparring(damage);
+        return 0;
+    }
+    if (g.titan_alive) {
+        g.titan_hp -= damage;
+        if (g.titan_hp <= 0) {
+            g.titan_alive = false;
+            defeat_titan();
+        }
+        return 0;
+    }
+    if (g.elite_hp > 0) {
+        const EliteHit hit = strike_elite(EliteKind::Shield, g.elite_hp, damage, g.elite_front, true);
+        g.elite_hp = hit.hp;
+        if (!hit.damaged) return 0;
+        if (g.elite_hp > 0 && g.elite_hp < 18) {
+            queue_spawn(2, 2, "split");
+            g.elite_hp = 0;
+        }
+        return damage;
+    }
+    return damage;
+}
+
+RgbTint scene_tint() {
+    RgbTint tint;
+    if (g.sunken) {
+        tint.active = true;
+        tint.r = 40;
+        tint.g = 90;
+        tint.b = 150;
+        return tint;
+    }
+    if (g.elite_hp > 0 || g.titan_alive) {
+        tint.active = true;
+        tint.r = 170;
+        tint.g = 50;
+        tint.b = 40;
+        return tint;
+    }
+    if (g.rebuild > 0) {
+        tint.active = true;
+        tint.r = 150;
+        tint.g = 110;
+        tint.b = 60;
+    }
+    return tint;
+}
+
+int spawn_request_count() { return g.spawn_count; }
+SpawnRequest spawn_request(int index) {
+    if (index < 0 || index >= g.spawn_count) return {};
+    return g.spawns[index];
+}
+void clear_spawn_requests() { g.spawn_count = 0; }
 
 std::vector<RemixSlot> mirror_remix(int gate_id) {
     uint32_t mix = static_cast<uint32_t>(gate_id) * 16777619u + 0xA26u;
@@ -523,7 +651,7 @@ EliteHit strike_elite(EliteKind kind, int hp, int damage, bool from_front, bool 
 
 ChestOpen open_chest(bool mimic) {
     if (!mimic) return ChestOpen::Loot;
-    if (g.tools.sonar) return ChestOpen::Safe;
+    if (g.tools.sonar || g.sonar_marks > 0) return ChestOpen::Safe;
     return ChestOpen::Fight;
 }
 
@@ -725,24 +853,24 @@ void bind_save_folder(const std::string& folder) {
 
 std::vector<ItemReport> reports() {
     return {
-        {24, ItemStatus::Partial, "Sunken sub-gate", "Movement and sonar-mark logic. No flooded mesh; reuses a room id."},
+        {24, ItemStatus::Partial, "Sunken sub-gate", "Coolant flag 0xC04 in area 0x19 slows and tints. No flooded mesh."},
         {25, ItemStatus::Done, "Collapse digs", "Timer, bank, and failure. Uses the current ruin."},
-        {26, ItemStatus::Partial, "Mirror ruins", "Enemy counts for existing gates. No new placement actors."},
-        {27, ItemStatus::Partial, "Elite variants", "Shield, split, and burrow rules. Tint id stands in for a recolor."},
-        {28, ItemStatus::Partial, "Mimic chest", "Fights unless the Sonar stub is on. Sonar is add-on 2."},
+        {26, ItemStatus::Partial, "Mirror ruins", "Area 0x1A queues remix slots. No new actors are spawned."},
+        {27, ItemStatus::Partial, "Elite variants", "Hurt hook shields and splits. Tint uses bgPrim at 0x80204894."},
+        {28, ItemStatus::Partial, "Mimic chest", "Safe only when sonar flag 0xC02 or a 0xC80 mark is set."},
         {29, ItemStatus::Done, "Bonne sparring", "Five rematches, part prizes, no story flags."},
-        {30, ItemStatus::Partial, "The Custodian", "Module and HP from the floor. Deep Gate floor comes from add-on 22."},
-        {31, ItemStatus::Partial, "Roaming titan", "Timer and drop. No giant actor."},
-        {32, ItemStatus::Partial, "Rival digger", "Race time and buyout. No rival model."},
+        {30, ItemStatus::Partial, "The Custodian", "Flag 0xCA0 sets floor 10. No new boss mesh."},
+        {31, ItemStatus::Partial, "Roaming titan", "Play-time halfword 0x801BC3F6 arms it. No giant actor."},
+        {32, ItemStatus::Partial, "Rival digger", "Leaving area 0x1A finishes the race. No rival model."},
         {33, ItemStatus::Done, "Digger's Guild board", "Six repeatable contracts and payouts."},
         {34, ItemStatus::Done, "Lost Servbots", "Twenty-four hints and tier rewards."},
-        {35, ItemStatus::Partial, "Old City rebuild", "Zenny, supplies, and shop names. No district mesh."},
+        {35, ItemStatus::Partial, "Old City rebuild", "Shops and a warm bgPrim tint. No district mesh."},
         {36, ItemStatus::Done, "News photo jobs", "Area-matched shots while photo mode is on."},
-        {37, ItemStatus::Partial, "Flutter refit", "Three parts open the lab flag. Fusion itself is add-on 13."},
+        {37, ItemStatus::Partial, "Flutter refit", "Fusion flag 0xC0D enables material. Lab still needs three parts."},
         {38, ItemStatus::Done, "Parts appraiser", "Fee by rarity, original junk names."},
         {39, ItemStatus::Done, "Courier job", "Skate deliveries with a time bonus."},
         {40, ItemStatus::Done, "Refractor exchange", "Daily price, twenty-shard cap."},
-        {41, ItemStatus::Partial, "Lake fishing", "Catch table. No rod scene. Fusion junk needs add-on 13."},
+        {41, ItemStatus::Partial, "Lake fishing", "Catch table only. No rod scene, so the tick never casts."},
         {42, ItemStatus::Done, "Weapon range", "Best score per weapon, no zenny spent."},
         {43, ItemStatus::Done, "Digger journals", "Eight original pages. A full set opens the vault flag."},
         {44, ItemStatus::Done, "Music discs", "Track index only. Audio is the player's own disc at runtime."},

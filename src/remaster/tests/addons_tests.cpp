@@ -174,12 +174,29 @@ int main() {
     expect(std::string(reel_fish(2, 0.1).name).find("snapped") != std::string::npos, "a short reel snaps");
 
     const auto flags = flag_writes();
-    bool used_early_range = false;
+    bool used_neighbor_range = false;
     for (int id : flags) {
-        if (id >= kEarlyAddonFlagLo && id <= kEarlyAddonFlagHi) used_early_range = true;
+        if (id >= kNeighborFlagLo && id <= kNeighborFlagHi) used_neighbor_range = true;
         expect(id >= kFlagLo && id <= kFlagHi, "new flags stay in the add-on B range");
     }
-    expect(!used_early_range, "flags reserved for add-ons 1-23 are not written");
+    expect(!used_neighbor_range, "add-on A flags 0xC00-0xCFF are not written");
+    NeighborView bits;
+    bits.sonar = true;
+    note_neighbor(bits);
+    expect(tool_hooks().sonar, "sonar flag 0xC02 turns the stub on");
+    bits = NeighborView{};
+    bits.fusion = true;
+    bits.deep_gate = true;
+    note_neighbor(bits);
+    expect(tool_hooks().fusion, "fusion flag 0xC0D turns the stub on");
+    expect(deep_gate_floor() >= 10, "Deep Gate flag 0xCA0 arms the custodian floor");
+    reset();
+    note_zenny(0);
+    on_world(0x1A, 2, 0);
+    expect(spawn_request_count() >= 4, "the main gate remix queues existing enemy slots");
+    expect(on_hurt(false, 5) == 0, "a shielded elite ignores the first hit");
+    on_world(0x1B, 6, 0);
+    expect(zenny() == 1000, "leaving the gate finishes the rival race");
 
     const std::string saved = serialize();
     reset();

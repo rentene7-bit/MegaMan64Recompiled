@@ -5,15 +5,25 @@
 #include <string>
 #include <vector>
 
-/* Add-ons 24-46. Add-ons 1-23 are another branch. Their event flags are
- * reserved at 0x900-0x9FF and are not written here. These systems use
- * 0xA00-0xAFF (MSB-first bits in the array at 0x802055A8). Host state is the
- * source of truth; flag_writes() is what a game hook should SET. */
+/* Add-ons 24-46. Add-ons 1-23 live on the other branch and own flags
+ * 0xC00-0xCFF (guest 0x80205728 and up): 0xC01-0xC17 mirror each add-on id,
+ * 0xC80+slot is a sonar mark, 0xC90+slot is a vault, and 0xCA0 is the Deep
+ * Gate. This branch only writes 0xA00-0xAFF. Bits are MSB-first in the array
+ * at 0x802055A8. Host state is the source of truth; flag_writes() is what the
+ * player tick SETs. */
 
 namespace remaster::addons {
 
-constexpr int kEarlyAddonFlagLo = 0x900;
-constexpr int kEarlyAddonFlagHi = 0x9FF;
+constexpr uint32_t kFlagGuest = 0x802055A8u;
+constexpr int kNeighborFlagLo = 0xC00;
+constexpr int kNeighborFlagHi = 0xCFF;
+constexpr int kNeighborGrapple = 0xC01;
+constexpr int kNeighborSonar = 0xC02;
+constexpr int kNeighborCoolant = 0xC04;
+constexpr int kNeighborFusion = 0xC0D;
+constexpr int kNeighborSonarMark = 0xC80;
+constexpr int kNeighborVault = 0xC90;
+constexpr int kNeighborDeepGate = 0xCA0;
 constexpr int kFlagLo = 0xA00;
 constexpr int kFlagHi = 0xAFF;
 
@@ -51,6 +61,18 @@ struct ToolHooks {
     bool fusion = false;
 };
 
+/* Bits read from add-ons 1-23. A set bit turns the matching stub on and does
+ * not clear it again, so a host test can still force the hook. */
+struct NeighborView {
+    bool grapple = false;
+    bool sonar = false;
+    bool coolant = false;
+    bool fusion = false;
+    bool deep_gate = false;
+    int sonar_marks = 0;
+    int vaults = 0;
+};
+
 struct Rgb {
     int r = 180;
     int g = 180;
@@ -69,6 +91,8 @@ struct ItemReport {
 void reset();
 void set_tool_hooks(ToolHooks hooks);
 ToolHooks tool_hooks();
+void note_neighbor(const NeighborView& view);
+NeighborView neighbor();
 void note_story_complete(bool done);
 bool story_complete();
 void note_zenny(int amount);
@@ -77,6 +101,8 @@ bool spend_zenny(int amount);
 void grant_zenny(int amount);
 void note_area(int area, int entrance);
 int area();
+void on_world(int area_id, int entrance, int play_frames);
+int on_hurt(bool victim_is_player, int damage);
 void note_deep_gate_floor(int floor);
 int deep_gate_floor();
 bool lab_ready();
@@ -152,6 +178,23 @@ DiscCue play_music_disc(int index);
 
 int reputation();
 std::string epilogue();
+
+struct RgbTint {
+    bool active = false;
+    int r = 0;
+    int g = 0;
+    int b = 0;
+};
+RgbTint scene_tint();
+
+struct SpawnRequest {
+    int model_id = 0;
+    int count = 0;
+    const char* role = "";
+};
+int spawn_request_count();
+SpawnRequest spawn_request(int index);
+void clear_spawn_requests();
 
 float sunken_move_scale();
 bool enter_sunken();
