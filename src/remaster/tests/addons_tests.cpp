@@ -306,6 +306,19 @@ int run_addon_tests() {
     seek.to_z = -0x20000;
     ShotSeekOut steered = steer_shot(seek);
     expect(steered.vel_x > 0 && steered.vel_z < 0, "arc chain steers toward the last victim");
+
+    addon_reset();
+    world = rich();
+    addon_command(AddonVerb::FindJunk, AddonId::Sentry, world);
+    addon_command(AddonVerb::Build, AddonId::Sentry, world);
+    addon_command(AddonVerb::UseGear, AddonId::Sentry, world);
+    expect(addon_take_plant(), "sentry action plants the next shot");
+    expect(!addon_take_plant(), "only one shot is planted");
+    PlantTick planted;
+    planted.lives = 2;
+    planted.alive = 0x80;
+    PlantTickOut stayed = plant_shot_tick(planted);
+    expect(stayed.keep && stayed.lives == 1, "a planted shot stays and counts down");
     seek.to_x = 0;
     seek.to_z = 0;
     expect(steer_shot(seek).vel_x == 0, "arc chain keeps its velocity without a victim");

@@ -78,6 +78,7 @@ struct State {
     int victim = 0;
     int victim_x = 0;
     int victim_z = 0;
+    bool plant_shot = false;
     int seen_zenny = -1;
 };
 
@@ -466,6 +467,11 @@ AddonEdit addon_command(AddonVerb verb, AddonId id, const AddonView& world) {
             edit.note = "Wall kick is armed for a marked shaft.";
             return edit;
         }
+        if (id == AddonId::Sentry) {
+            g.plant_shot = true;
+            edit.note = "The next shot stays put as the sentry.";
+            return edit;
+        }
         if (id == AddonId::Analyzer) {
             edit.note = "Analyzer is reading the actor HP the remaster already tracks.";
             return edit;
@@ -520,6 +526,7 @@ AddonVerb special_for(AddonId id) {
     case AddonId::Analyzer:
     case AddonId::Lantern:
     case AddonId::WallKick:
+    case AddonId::Sentry:
         return AddonVerb::UseGear;
     default:
         return AddonVerb::None;
@@ -691,6 +698,22 @@ ShotSeekOut steer_shot(const ShotSeek& in) {
     }
     out.vel_x = step_x;
     out.vel_z = step_z;
+    return out;
+}
+
+bool addon_take_plant() {
+    const bool plant = g.plant_shot;
+    g.plant_shot = false;
+    return plant;
+}
+
+PlantTickOut plant_shot_tick(const PlantTick& in) {
+    PlantTickOut out;
+    out.lives = in.lives;
+    if (in.lives > 0 && in.alive >= 0x80) {
+        out.keep = true;
+        out.lives = in.lives - 1;
+    }
     return out;
 }
 

@@ -164,6 +164,16 @@ struct ShotSeekOut {
 
 ShotSeekOut steer_shot(const ShotSeek& in);
 void addon_note_victim_pos(int x, int z);
+bool addon_take_plant();
+struct PlantTick {
+    int lives = 0;
+    int alive = 0;
+};
+struct PlantTickOut {
+    bool keep = false;
+    int lives = 0;
+};
+PlantTickOut plant_shot_tick(const PlantTick& in);
 void addon_victim_pos(int& x, int& z);
 
 struct OutgoingHit {

@@ -225,11 +225,31 @@ extern "C" void remaster_shot_spawn(uint8_t* rdram, recomp_context* ctx) {
         const int64_t rapid = static_cast<int64_t>(static_cast<int32_t>(remaster::kPartByteGuest + 1u));
         MEM_BU(0, rapid) = 0;
     }
+    if (remaster::addon_take_plant()) {
+        const int32_t shot = static_cast<int32_t>(ctx->r17);
+        if (static_cast<uint32_t>(shot) >= 0x80000000u && static_cast<uint32_t>(shot) < 0x80800000u) {
+            MEM_B(0x9, shot) = 8;
+            MEM_H(0x44, shot) = 0;
+            MEM_H(0x48, shot) = 0;
+        }
+    }
 }
 
 extern "C" void remaster_shot_hit(uint8_t* rdram, recomp_context* ctx) {
     const int32_t shot = static_cast<int32_t>(ctx->r17);
     if (static_cast<uint32_t>(shot) < 0x80000000u || static_cast<uint32_t>(shot) >= 0x80800000u) {
+        return;
+    }
+    remaster::PlantTick plant;
+    plant.lives = MEM_B(0x9, shot);
+    plant.alive = static_cast<int>(ctx->r2);
+    const remaster::PlantTickOut planted = remaster::plant_shot_tick(plant);
+    if (planted.keep) {
+        ctx->r2 = 0;
+        MEM_B(0x3, shot) = 0;
+        MEM_B(0x9, shot) = static_cast<int8_t>(planted.lives);
+        MEM_H(0x44, shot) = 0;
+        MEM_H(0x48, shot) = 0;
         return;
     }
     remaster::ShotHit in;
