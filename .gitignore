@@ -83,4 +83,5 @@ gamecontrollerdb.txt
 .cache
 .idea
 build-*
+cmake-build/
 cmake-build-*

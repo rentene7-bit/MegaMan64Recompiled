@@ -402,6 +402,7 @@ void test_autosave(const std::filesystem::path& dir) {
 } // namespace
 
 int run_idea_tests();
+int run_addon_tests();
 
 int main() {
     const auto dir = std::filesystem::temp_directory_path() / "mm64-remaster-tests";
@@ -413,6 +414,7 @@ int main() {
     test_presentation();
     test_autosave(dir / "app");
     g_failed += run_idea_tests();
+    g_failed += run_addon_tests();
     std::filesystem::remove_all(dir);
     if (g_failed != 0) {
         std::cerr << g_failed << " failure(s)\n";

@@ -5,6 +5,7 @@
 #include "recomp.h"
 #include "recomp_input.h"
 #include "remaster.hpp"
+#include "addons.hpp"
 #include "zelda_config.h"
 #include "recomp_ui.h"
 #include "SDL.h"
@@ -131,6 +132,15 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
                 }
                 if (!recompui::is_context_capturing_input() && keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_Q) {
                     remaster::set_weapon_wheel_open(!remaster::weapon_wheel_open());
+                }
+                if (!recompui::is_context_capturing_input() && keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_F6) {
+                    remaster::addon_request_special();
+                }
+                if (!recompui::is_context_capturing_input() && keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_F7) {
+                    remaster::addon_request_cycle(1);
+                }
+                if (!recompui::is_context_capturing_input() && keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_F8) {
+                    remaster::addon_request_confirm();
                 }
                 if (!recompui::is_context_capturing_input() && keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_LEFTBRACKET) {
                     remaster::cycle_weapon(-1);

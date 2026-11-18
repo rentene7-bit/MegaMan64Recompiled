@@ -188,6 +188,7 @@ set (SOURCES
         ${CMAKE_SOURCE_DIR}/src/remaster/xa.cpp
         ${CMAKE_SOURCE_DIR}/src/remaster/audio.cpp
         ${CMAKE_SOURCE_DIR}/src/remaster/ideas.cpp
+        ${CMAKE_SOURCE_DIR}/src/remaster/addons.cpp
         ${CMAKE_SOURCE_DIR}/src/remaster/upscale.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/ui_remaster.cpp
 

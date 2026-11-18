@@ -107,6 +107,7 @@ void set_output_gain(float gain);
 void mix_audio(float* interleaved_stereo, size_t frames, uint32_t sample_rate);
 
 void tick_autosave();
+void request_field_save();
 void tick_frame(double dt_seconds);
 
 std::vector<TexturePackCandidate> select_texture_packs(std::vector<TexturePackCandidate> packs, uint64_t budget_bytes);
