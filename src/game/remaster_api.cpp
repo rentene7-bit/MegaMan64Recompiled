@@ -127,6 +127,13 @@ void remember_player(uint8_t* rdram, int32_t player) {
         }
         MEM_H(0x48, player) = static_cast<int16_t>(next);
     }
+    if (remaster::addon_freeze_step()) {
+        const int32_t frozen = remaster::addon_victim();
+        if (guest_ram(frozen)) {
+            MEM_H(0x44, frozen) = 0;
+            MEM_H(0x48, frozen) = 0;
+        }
+    }
     const int sentry = remaster::addon_take_sentry_damage();
     const int32_t sentry_target = remaster::addon_victim();
     if (sentry > 0 && guest_ram(sentry_target)) {
@@ -189,6 +196,9 @@ extern "C" void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx) {
         if (out.zero_velocity) {
             MEM_H(0x44, victim) = 0;
             MEM_H(0x48, victim) = 0;
+            if (hit.coolant) {
+                remaster::addon_start_freeze();
+            }
         }
         if (out.knockback != 0) {
             int next = MEM_H(0x48, victim) + out.knockback;
@@ -232,6 +242,22 @@ extern "C" void remaster_shot_spawn(uint8_t* rdram, recomp_context* ctx) {
             MEM_B(0x9, shot) = 8;
             MEM_H(0x44, shot) = 0;
             MEM_H(0x48, shot) = 0;
+        }
+    } else if (remaster::addon_built(remaster::AddonId::Coolant)) {
+        const int32_t shot = static_cast<int32_t>(ctx->r17);
+        if (static_cast<uint32_t>(shot) >= 0x80000000u && static_cast<uint32_t>(shot) < 0x80800000u) {
+            auto stretch = [](int value) {
+                value *= 2;
+                if (value > 32767) {
+                    value = 32767;
+                }
+                if (value < -32768) {
+                    value = -32768;
+                }
+                return static_cast<int16_t>(value);
+            };
+            MEM_H(0x44, shot) = stretch(MEM_H(0x44, shot));
+            MEM_H(0x48, shot) = stretch(MEM_H(0x48, shot));
         }
     }
 }
@@ -349,7 +375,8 @@ extern "C" void remaster_scale_projection(uint8_t* rdram, recomp_context* ctx) {
     int height = 0;
     recompui::get_window_size(width, height);
     const float aspect = height > 0 ? static_cast<float>(width) / static_cast<float>(height) : (4.0f / 3.0f);
-    remaster::scale_projection_matrix(matrix, remaster::widescreen_scale_q8(aspect));
+    const int zoom = remaster::resonance_zoom_q8(remaster::widescreen_scale_q8(aspect));
+    remaster::scale_projection_matrix(matrix, zoom);
 }
 
 extern "C" void remaster_set_cutscene_active(uint8_t* rdram, recomp_context* ctx) {

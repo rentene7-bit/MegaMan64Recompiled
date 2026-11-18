@@ -338,6 +338,24 @@ int run_addon_tests() {
     addon_note_enemy_hit(40, 7);
     const std::string hud = addon_hud_line();
     expect(hud.find("HP 40") != std::string::npos && hud.find("hit 7") != std::string::npos, "analyzer shows hp and the last hit");
+
+    addon_reset();
+    expect(resonance_zoom_q8(256) == 256, "projection stays put without resonance");
+    int frozen = 0;
+    addon_start_freeze();
+    for (int i = 0; i < 30; ++i) {
+        if (addon_freeze_step()) {
+            frozen += 1;
+        }
+    }
+    expect(frozen == 24, "coolant keeps a victim frozen for 24 steps");
+    world = rich();
+    addon_command(AddonVerb::FindJunk, AddonId::Charge, world);
+    addon_command(AddonVerb::FindJunk, AddonId::Pierce, world);
+    addon_command(AddonVerb::Build, AddonId::Charge, world);
+    addon_command(AddonVerb::Build, AddonId::Pierce, world);
+    addon_tick(world);
+    expect(resonance_zoom_q8(256) == 224, "resonance narrows the projection");
     seek.to_x = 0;
     seek.to_z = 0;
     expect(steer_shot(seek).vel_x == 0, "arc chain keeps its velocity without a victim");

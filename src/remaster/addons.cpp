@@ -84,6 +84,7 @@ struct State {
     int last_x = 0;
     int last_z = 0;
     int seen_zenny = -1;
+    int freeze_ticks = 0;
 };
 
 State g;
@@ -1006,6 +1007,29 @@ int addon_mastery_bonus() {
 
 int lantern_fog_bonus() {
     return g.built[index_of(AddonId::Lantern)] ? 150 : 0;
+}
+
+void addon_start_freeze() {
+    g.freeze_ticks = 24;
+}
+
+bool addon_freeze_step() {
+    if (g.freeze_ticks <= 0) {
+        return false;
+    }
+    g.freeze_ticks -= 1;
+    return true;
+}
+
+int resonance_zoom_q8(int base) {
+    if (!g.built[index_of(AddonId::Resonance)] || base <= 0) {
+        return base;
+    }
+    int zoomed = (base * 7) / 8;
+    if (zoomed < 128) {
+        zoomed = 128;
+    }
+    return zoomed;
 }
 
 void addon_note_victim(int address) {
