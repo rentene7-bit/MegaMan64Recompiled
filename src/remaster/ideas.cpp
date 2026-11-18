@@ -1,5 +1,6 @@
 #include "disc_internal.hpp"
 #include "remaster.hpp"
+#include "remaster_addons.hpp"
 #include "upscale.hpp"
 
 #include <algorithm>
@@ -568,6 +569,7 @@ std::string livesplit_xml() {
 }
 
 void tick_frame(double dt_seconds) {
+    addons::tick(dt_seconds);
     if (g_run && !g_loading.load() && !photo_mode()) {
         g_run_seconds += std::clamp(dt_seconds, 0.0, 0.1) * (game_speed_percent() / 100.0);
     }
