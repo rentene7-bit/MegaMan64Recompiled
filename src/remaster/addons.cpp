@@ -76,6 +76,8 @@ struct State {
     int pull_left = 0;
     int sentry_ticks = 0;
     int victim = 0;
+    int victim_x = 0;
+    int victim_z = 0;
     int seen_zenny = -1;
 };
 
@@ -661,6 +663,45 @@ ShotHitOut adjust_shot_hit(const ShotHit& in) {
         return out;
     }
     return out;
+}
+
+ShotSeekOut steer_shot(const ShotSeek& in) {
+    ShotSeekOut out;
+    out.vel_x = in.vel_x;
+    out.vel_z = in.vel_z;
+    if (!in.seek || (in.to_x == 0 && in.to_z == 0)) {
+        return out;
+    }
+    int step_x = (in.to_x - in.from_x) >> 12;
+    int step_z = (in.to_z - in.from_z) >> 12;
+    if (step_x > 40) {
+        step_x = 40;
+    }
+    if (step_x < -40) {
+        step_x = -40;
+    }
+    if (step_z > 40) {
+        step_z = 40;
+    }
+    if (step_z < -40) {
+        step_z = -40;
+    }
+    if (step_x == 0 && step_z == 0) {
+        step_x = in.to_x >= in.from_x ? 8 : -8;
+    }
+    out.vel_x = step_x;
+    out.vel_z = step_z;
+    return out;
+}
+
+void addon_note_victim_pos(int x, int z) {
+    g.victim_x = x;
+    g.victim_z = z;
+}
+
+void addon_victim_pos(int& x, int& z) {
+    x = g.victim_x;
+    z = g.victim_z;
 }
 
 OutgoingHitOut adjust_outgoing_hit(const OutgoingHit& in) {

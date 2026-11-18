@@ -184,6 +184,7 @@ extern "C" void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx) {
     if (!is_player && guest_ram(victim)) {
         remaster::addon_note_enemy_hp(MEM_H(0x6E, victim));
         remaster::addon_note_victim(victim);
+        remaster::addon_note_victim_pos(MEM_W(0x1C, victim), MEM_W(0x24, victim));
         if (out.zero_velocity) {
             MEM_H(0x44, victim) = 0;
             MEM_H(0x48, victim) = 0;
@@ -247,8 +248,22 @@ extern "C" void remaster_shot_hit(uint8_t* rdram, recomp_context* ctx) {
     ctx->r2 = 0;
     MEM_B(0x3, shot) = 0;
     MEM_B(0xB, shot) = static_cast<int8_t>(out.tag);
-    MEM_H(0x44, shot) = static_cast<int16_t>(out.vel_x);
-    MEM_H(0x48, shot) = static_cast<int16_t>(out.vel_z);
+    int vel_x = out.vel_x;
+    int vel_z = out.vel_z;
+    if (out.chain) {
+        remaster::ShotSeek seek;
+        seek.seek = true;
+        seek.vel_x = vel_x;
+        seek.vel_z = vel_z;
+        seek.from_x = MEM_W(0x1C, shot);
+        seek.from_z = MEM_W(0x24, shot);
+        remaster::addon_victim_pos(seek.to_x, seek.to_z);
+        const remaster::ShotSeekOut steered = remaster::steer_shot(seek);
+        vel_x = steered.vel_x;
+        vel_z = steered.vel_z;
+    }
+    MEM_H(0x44, shot) = static_cast<int16_t>(vel_x);
+    MEM_H(0x48, shot) = static_cast<int16_t>(vel_z);
     if (out.chain) {
         remaster::addon_set_chain(true);
     }

@@ -147,6 +147,25 @@ struct ShotHitOut {
 
 ShotHitOut adjust_shot_hit(const ShotHit& in);
 
+struct ShotSeek {
+    int vel_x = 0;
+    int vel_z = 0;
+    int from_x = 0;
+    int from_z = 0;
+    int to_x = 0;
+    int to_z = 0;
+    bool seek = false;
+};
+
+struct ShotSeekOut {
+    int vel_x = 0;
+    int vel_z = 0;
+};
+
+ShotSeekOut steer_shot(const ShotSeek& in);
+void addon_note_victim_pos(int x, int z);
+void addon_victim_pos(int& x, int& z);
+
 struct OutgoingHit {
     int amount = 0;
     bool victim_is_player = false;

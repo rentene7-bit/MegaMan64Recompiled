@@ -298,5 +298,17 @@ int run_addon_tests() {
     AddonEdit grabbed = addon_command(AddonVerb::UseGear, AddonId::Grapple, world);
     expect(grabbed.zenny_delta == 1200, "grapple action opens the marked vault");
 
+    ShotSeek seek;
+    seek.seek = true;
+    seek.from_x = 0;
+    seek.from_z = 0;
+    seek.to_x = 0x50000;
+    seek.to_z = -0x20000;
+    ShotSeekOut steered = steer_shot(seek);
+    expect(steered.vel_x > 0 && steered.vel_z < 0, "arc chain steers toward the last victim");
+    seek.to_x = 0;
+    seek.to_z = 0;
+    expect(steer_shot(seek).vel_x == 0, "arc chain keeps its velocity without a victim");
+
     return g_failed;
 }
