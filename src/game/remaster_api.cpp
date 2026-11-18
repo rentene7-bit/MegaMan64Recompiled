@@ -2,6 +2,8 @@
 #include "librecomp/helpers.hpp"
 #include "recomp_ui.h"
 #include "remaster.hpp"
+#include "addons.hpp"
+#include "zelda_config.h"
 #ifdef MM64R_RESEARCH
 #include "research.hpp"
 #endif
@@ -17,6 +19,56 @@ bool guest_ram(int32_t address) {
     return value >= 0x80000000u && value < 0x80800000u;
 }
 
+int64_t guest_at(uint32_t address) {
+    return static_cast<int64_t>(static_cast<int32_t>(address));
+}
+
+bool read_flag(uint8_t* rdram, int id) {
+    const int64_t at = guest_at(remaster::kFlagBase + static_cast<uint32_t>(id >> 3));
+    const uint8_t mask = static_cast<uint8_t>(0x80u >> (id & 7));
+    return (MEM_BU(0, at) & mask) != 0;
+}
+
+void write_flag(uint8_t* rdram, int id) {
+    if (id < remaster::kAddonFlagOrigin || id >= remaster::kAddonFlagOrigin + 0x100) {
+        return;
+    }
+    const int64_t at = guest_at(remaster::kFlagBase + static_cast<uint32_t>(id >> 3));
+    const uint8_t mask = static_cast<uint8_t>(0x80u >> (id & 7));
+    MEM_BU(0, at) = static_cast<uint8_t>(MEM_BU(0, at) | mask);
+}
+
+void apply_edit(uint8_t* rdram, int32_t player, const remaster::AddonEdit& edit) {
+    const bool persist = edit.zenny_delta != 0 || edit.flag_count > 0;
+    if (edit.zenny_delta != 0) {
+        const int64_t at = guest_at(remaster::kZennyGuest);
+        int next = static_cast<int>(MEM_HU(0, at)) + edit.zenny_delta;
+        if (next < 0) {
+            next = 0;
+        }
+        if (next > 65535) {
+            next = 65535;
+        }
+        MEM_HU(0, at) = static_cast<uint16_t>(next);
+    }
+    if (edit.hp_delta != 0) {
+        int next = MEM_H(0x6E, player) + edit.hp_delta;
+        if (next < 0) {
+            next = 0;
+        }
+        if (next > 999) {
+            next = 999;
+        }
+        MEM_H(0x6E, player) = static_cast<int16_t>(next);
+    }
+    for (int i = 0; i < edit.flag_count; ++i) {
+        write_flag(rdram, edit.flags_to_set[i]);
+    }
+    if (persist) {
+        zelda64::save_config();
+    }
+}
+
 void remember_player(uint8_t* rdram, int32_t player) {
     if (!guest_ram(player)) {
         return;
@@ -24,6 +76,18 @@ void remember_player(uint8_t* rdram, int32_t player) {
     g_player_guest.store(player);
     const int hp = MEM_H(0x6E, player);
     remaster::note_actor_hp(0, hp);
+    remaster::AddonView world;
+    world.area = MEM_BU(0, guest_at(remaster::kAreaGuest));
+    world.entrance = MEM_BU(0, guest_at(remaster::kEntranceGuest));
+    world.zenny = MEM_HU(0, guest_at(remaster::kZennyGuest));
+    world.hp = hp;
+    world.vanilla_right_chest = read_flag(rdram, 0x440);
+    world.vanilla_left_chest = read_flag(rdram, 0x441);
+    world.tutorial_done = read_flag(rdram, 0x610);
+    apply_edit(rdram, player, remaster::addon_tick(world));
+    world.zenny = MEM_HU(0, guest_at(remaster::kZennyGuest));
+    world.hp = MEM_H(0x6E, player);
+    apply_edit(rdram, player, remaster::addon_apply_requests(world));
     /* Absolute address confirmed on pc1. 0 is Remove, 2 is Machine Buster. */
     const int64_t equipped_at = static_cast<int64_t>(static_cast<int32_t>(0x80204B20));
     const int pending = remaster::take_equipped_weapon_write();

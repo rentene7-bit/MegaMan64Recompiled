@@ -1,5 +1,6 @@
 #include "zelda_config.h"
 #include "remaster.hpp"
+#include "addons.hpp"
 #include "recomp_input.h"
 #include "zelda_sound.h"
 #include "zelda_render.h"
@@ -263,6 +264,7 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["remaster_seamless"] = remaster::seamless();
     config_json["remaster_randomizer_seed"] = remaster::randomizer_seed();
     config_json["rom_path"] = remaster::rom_path().string();
+    config_json["remaster_addons"] = remaster::addon_save_blob();
 
     return save_json_with_backups(path, config_json);
 }
@@ -305,6 +307,7 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     remaster::set_seamless(from_or_default(config_json, "remaster_seamless", false));
     remaster::set_randomizer_seed(from_or_default(config_json, "remaster_randomizer_seed", std::string()));
     remaster::note_rom_path(from_or_default(config_json, "rom_path", std::string()));
+    remaster::addon_load_blob(from_or_default(config_json, "remaster_addons", std::string()));
 }
 
 bool load_general_config(const std::filesystem::path& path) {
