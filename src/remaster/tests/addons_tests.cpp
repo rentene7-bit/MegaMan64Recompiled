@@ -266,6 +266,8 @@ int main() {
     expect(designated_mimic_chest() == 0x41, "flag 0x441 is the mimic");
     expect(!consider_chest(0x40).fight && consider_chest(0x41).fight, "0x440 stays loot and 0x441 fights");
     expect(consider_chest(0x41, 0x00, 2).skip_reward, "the mimic is area 0x00 room 2");
+    expect(mimic_grants_reward(false), "a chest-only room still pays");
+    expect(!mimic_grants_reward(true), "a local fighter is the mimic instead of the reward");
     expect(!consider_chest(0x41, 0x00, 1).fight, "the same id in another room is not the mimic");
     expect(!consider_chest(0x40, 0x00, 2).skip_reward, "its twin in the same room stays a normal chest");
     designate_mimic_chest(0x40);

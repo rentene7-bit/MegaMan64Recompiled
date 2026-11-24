@@ -667,6 +667,7 @@ void arm_mimic_at(int x, int y, int z) {
     g.mimic_y = y;
     g.mimic_z = z;
 }
+bool mimic_grants_reward(bool local_fighter_ready) { return !local_fighter_ready; }
 bool mimic_pending() { return g.mimic_pull; }
 int mimic_pending_x() { return g.mimic_x; }
 int mimic_pending_y() { return g.mimic_y; }

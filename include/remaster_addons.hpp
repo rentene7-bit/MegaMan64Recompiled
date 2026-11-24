@@ -236,6 +236,8 @@ struct ChestResult {
 /* area and room of -1 skip the census room check. */
 ChestResult consider_chest(int chest_id, int area = -1, int room = -1);
 void arm_mimic_at(int x, int y, int z);
+/* No fighter is loaded in this room: pay the chest instead of dropping the reward. */
+bool mimic_grants_reward(bool local_fighter_ready);
 bool mimic_pending();
 int mimic_pending_x();
 int mimic_pending_y();

@@ -106,31 +106,7 @@ void set_enemy_live(uint8_t* rdram, int slot, bool on) {
     MEM_W(0, at) = static_cast<int32_t>(mask);
 }
 
-uint32_t fighters_now(uint8_t* rdram);
-
 constexpr int kSlotWords = static_cast<int>(remaster::addons::kEnemyStride / 4u);
-int32_t g_fighter_words[kSlotWords];
-uint32_t g_fighter_base = 0;
-bool g_fighter_ready = false;
-
-void copy_slot_words(uint8_t* rdram, int slot, int32_t* dst) {
-    const int64_t actor = enemy_guest(slot);
-    for (int i = 0; i < kSlotWords; i++) {
-        dst[i] = MEM_W(i * 4, actor);
-    }
-}
-
-void remember_fighter(uint8_t* rdram) {
-    const int slot = remaster::addons::first_live_enemy(fighters_now(rdram));
-    if (slot < 0) return;
-    const uint32_t header = static_cast<uint32_t>(MEM_W(0, enemy_guest(slot)));
-    /* Only a slot the actor update is already calling. A blank or class-1
-     * header indexes the null function at 0x00000000. */
-    if (!remaster::addons::actor_header_dispatches(header)) return;
-    copy_slot_words(rdram, slot, g_fighter_words);
-    g_fighter_base = remaster::addons::kEnemyPool + static_cast<uint32_t>(slot) * remaster::addons::kEnemyStride;
-    g_fighter_ready = true;
-}
 
 int free_enemy_slot(uint8_t* rdram) {
     const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::addons::kEnemyLiveMask)));
@@ -140,30 +116,45 @@ int free_enemy_slot(uint8_t* rdram) {
     return -1;
 }
 
-/* Copy a real fighter, then set the live bit. Never marks a blank slot live.
- * func_8004EEAC alone leaves header 00200000, and stamping class 1 does not
- * install an update function. func_8004BFB0 then jumps to 0. */
-int spawn_copied_fighter(uint8_t* rdram) {
-    if (!g_fighter_ready) return -1;
-    if (!remaster::addons::actor_header_dispatches(static_cast<uint32_t>(g_fighter_words[0]))) return -1;
-    const int slot = free_enemy_slot(rdram);
-    if (slot < 0) return -1;
-    const uint32_t dst_base = remaster::addons::kEnemyPool + static_cast<uint32_t>(slot) * remaster::addons::kEnemyStride;
-    const int64_t actor = enemy_guest(slot);
+/* A class-0x03 slot the current room is already updating. Nothing is kept
+ * across rooms: the other room's table indexes crash func_8004BFB0. */
+int room_fighter_source(uint8_t* rdram) {
+    const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::addons::kEnemyLiveMask)));
+    int dormant = -1;
+    for (int slot = 0; slot < remaster::addons::kEnemySlots; slot++) {
+        if (!remaster::addons::enemy_live(mask, slot)) continue;
+        const uint32_t header = static_cast<uint32_t>(MEM_W(0, enemy_guest(slot)));
+        if (!remaster::addons::actor_header_dispatches(header)) continue;
+        if (MEM_H(0x6E, enemy_guest(slot)) > 0) return slot;
+        if (dormant < 0) dormant = slot;
+    }
+    return dormant;
+}
+
+/* Duplicate that slot, then set the live bit. A blank or class-1 slot is never
+ * marked live. func_8004EEAC's header 00200000 has no update function. */
+int duplicate_room_fighter(uint8_t* rdram) {
+    const int src = room_fighter_source(rdram);
+    const int dst = free_enemy_slot(rdram);
+    if (src < 0 || dst < 0 || src == dst) return -1;
+    const uint32_t src_base = remaster::addons::kEnemyPool + static_cast<uint32_t>(src) * remaster::addons::kEnemyStride;
+    const uint32_t dst_base = remaster::addons::kEnemyPool + static_cast<uint32_t>(dst) * remaster::addons::kEnemyStride;
+    const int64_t from = enemy_guest(src);
+    const int64_t actor = enemy_guest(dst);
     for (int i = 0; i < kSlotWords; i++) {
-        uint32_t word = static_cast<uint32_t>(g_fighter_words[i]);
-        if (g_fighter_base != 0 && word >= g_fighter_base && word < g_fighter_base + remaster::addons::kEnemyStride) {
-            word = dst_base + (word - g_fighter_base);
+        uint32_t word = static_cast<uint32_t>(MEM_W(i * 4, from));
+        if (word >= src_base && word < src_base + remaster::addons::kEnemyStride) {
+            word = dst_base + (word - src_base);
         }
         MEM_W(i * 4, actor) = static_cast<int32_t>(word);
     }
     const uint32_t header = static_cast<uint32_t>(MEM_W(0, actor));
     if (!remaster::addons::actor_header_dispatches(header)) {
-        for (int i = 0; i < kSlotWords; i++) MEM_W(i * 4, enemy_guest(slot)) = 0;
+        for (int i = 0; i < kSlotWords; i++) MEM_W(i * 4, actor) = 0;
         return -1;
     }
-    set_enemy_live(rdram, slot, true);
-    return slot;
+    set_enemy_live(rdram, dst, true);
+    return dst;
 }
 
 uint32_t fighters_now(uint8_t* rdram) {
@@ -216,7 +207,6 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     remaster::addons::note_neighbor(bits);
     remaster::addons::note_underwater(area, entrance, bits.coolant);
     remaster::addons::on_world(area, entrance, frames);
-    remember_fighter(rdram);
     const int32_t player_now = static_cast<int32_t>(remaster::addons::kPlayerGuest);
     const int hp_now = MEM_H(0x6E, player_now);
     if (g_sunken_hp_before >= 0) {
@@ -243,22 +233,26 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     for (int i = 0; i < move_count; i++) {
         place_enemy(rdram, moves[i].slot, moves[i].x, moves[i].y, moves[i].z);
     }
-    if (remaster::addons::mimic_pending() && !remaster::addons::underwater()) {
-        int slot = remaster::addons::first_live_enemy(fought);
-        if (slot < 0) slot = spawn_copied_fighter(rdram);
-        if (slot >= 0) {
-            place_enemy(rdram, slot, remaster::addons::mimic_pending_x(), remaster::addons::mimic_pending_y(), remaster::addons::mimic_pending_z());
-            remaster::addons::note_mimic_placed(slot);
+    if (remaster::addons::mimic_slot() >= 0) {
+        const int64_t actor = enemy_guest(remaster::addons::mimic_slot());
+        int hp = MEM_H(0x6E, actor);
+        if ((pressed & remaster::addons::kFireButton) != 0 && hp > 0) {
+            hp -= 8;
+            if (hp < 0) hp = 0;
+            MEM_H(0x6E, actor) = static_cast<int16_t>(hp);
         }
-    } else if (remaster::addons::mimic_slot() >= 0) {
-        remaster::addons::note_mimic_alive(remaster::addons::enemy_live(fought, remaster::addons::mimic_slot()));
+        if (hp <= 0 || !remaster::addons::enemy_live(fought, remaster::addons::mimic_slot())) {
+            set_enemy_live(rdram, remaster::addons::mimic_slot(), false);
+            remaster::addons::note_mimic_alive(false);
+        }
     }
     if (!remaster::addons::custodian_ready() || remaster::addons::custodian_beaten()) {
-        if (!remaster::addons::custodian_ready()) {
+        if (g_custodian_slot >= 0) {
+            set_enemy_live(rdram, g_custodian_slot, false);
             g_custodian_slot = -1;
         }
     } else if (g_custodian_slot < 0) {
-        g_custodian_slot = spawn_copied_fighter(rdram);
+        g_custodian_slot = duplicate_room_fighter(rdram);
         if (g_custodian_slot >= 0) {
             remaster::addons::note_custodian_actor_placed();
             int spot_x = 0;
@@ -383,20 +377,21 @@ extern "C" void remaster_chest_reward(uint8_t* rdram, recomp_context* ctx) {
     }
     if (!guest_ram(chest)) return;
     (void)chest_id;
-    /* kind 1 is zenny. A zero value grants nothing, so the caller still consumes the chest. */
+    /* Only a fighter already live in this room. A chest-only room pays normally. */
+    const bool local = room_fighter_source(rdram) >= 0;
+    if (remaster::addons::mimic_grants_reward(local)) return;
+    const int slot = duplicate_room_fighter(rdram);
+    if (slot < 0) return;
     ctx->r5 = static_cast<gpr>(1);
     ctx->r6 = static_cast<gpr>(0);
     const int x = MEM_W(remaster::addons::kActorPosX, chest);
     const int y = MEM_W(remaster::addons::kActorPosY, chest);
     const int z = MEM_W(remaster::addons::kActorPosZ, chest);
-    remember_fighter(rdram);
-    int slot = remaster::addons::first_live_enemy(fighters_now(rdram));
-    if (slot < 0) slot = spawn_copied_fighter(rdram);
-    if (slot < 0) {
-        remaster::addons::arm_mimic_at(x, y, z);
-        return;
-    }
     place_enemy(rdram, slot, x, y, z);
+    int spot_hp = 0;
+    remaster::addons::custodian_spot(nullptr, nullptr, nullptr, &spot_hp);
+    if (spot_hp <= 0) spot_hp = 100;
+    MEM_H(0x6E, enemy_guest(slot)) = static_cast<int16_t>(spot_hp);
     remaster::addons::note_mimic_placed(slot);
 }
 
