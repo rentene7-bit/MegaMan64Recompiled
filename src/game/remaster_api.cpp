@@ -181,7 +181,8 @@ void read_enemy_spots(uint8_t* rdram, remaster::EnemySpot* spots) {
     const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kEnemyLiveMask)));
     for (int slot = 0; slot < remaster::kEnemySlots; ++slot) {
         const int64_t actor = enemy_addr(slot);
-        spots[slot].live = enemy_live(mask, slot, MEM_BU(0, actor));
+        const int header = MEM_BU(0, actor);
+        spots[slot].live = enemy_live(mask, slot, header) && remaster::enemy_header_targetable(header);
         if (!spots[slot].live) {
             continue;
         }

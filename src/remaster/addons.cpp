@@ -1041,6 +1041,10 @@ bool enemy_slot_live(uint32_t mask, int slot, int header) {
     return header != 0;
 }
 
+bool enemy_header_targetable(int header) {
+    return header != 0 && header != 0x07;
+}
+
 std::string addon_hud_line() {
     std::ostringstream out;
     if (g.built[index_of(AddonId::Patch)]) {

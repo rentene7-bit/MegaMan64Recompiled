@@ -374,6 +374,7 @@ int run_addon_tests() {
     expect(lock_on_slot(0) == -1 && lock_on_slot(3) == -1, "a clear lock id is not an enemy slot");
     expect(enemy_slot_live(0x80000000u, 0, 1) && !enemy_slot_live(0, 0, 1), "a live enemy needs its spawn bit");
     expect(!enemy_slot_live(0x80000000u, 0, 0), "despawn clears the actor header before the mask bit");
+    expect(!enemy_header_targetable(0x07) && enemy_header_targetable(1), "a chest header is not a fighter");
     EnemySpot spots[3];
     spots[0] = {0, 0, true};
     spots[1] = {100, 0, true};
@@ -381,6 +382,8 @@ int run_addon_tests() {
     int ox = 0;
     int oz = 0;
     expect(nearest_other_enemy(spots, 3, 0, 0, 0, &ox, &oz) == 2 && ox == 10, "arc chain picks the nearest other enemy");
+    spots[0].live = false;
+    expect(nearest_other_enemy(spots, 3, 0, 0, -1, &ox, &oz) == 2, "a chest slot is not a chain or analyzer target");
     DropNudge nudge;
     nudge.drop_x = 0;
     nudge.drop_z = 0;
