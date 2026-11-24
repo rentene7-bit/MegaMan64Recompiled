@@ -112,10 +112,7 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     }
     bits.sonar_marks = marks;
     remaster::addons::note_neighbor(bits);
-    if (remaster::addons::sunken_area(area)) {
-        remaster::addons::enter_sunken();
-        if (bits.coolant) remaster::addons::equip_water_gear();
-    }
+    remaster::addons::note_underwater(area, entrance, bits.coolant);
     remaster::addons::on_world(area, entrance, frames);
 
     const int32_t player = static_cast<int32_t>(remaster::addons::kPlayerGuest);
@@ -191,10 +188,11 @@ extern "C" void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" void remaster_scale_move(uint8_t* rdram, recomp_context* ctx) {
     const int area = MEM_BU(0, static_cast<int64_t>(0x801BC438));
+    const int room = MEM_BU(0, static_cast<int64_t>(0x801BC439));
     const bool gear = addon_flag_set(rdram, remaster::addons::kNeighborCoolant) || remaster::addons::tool_hooks().coolant;
-    ctx->r5 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, gear, static_cast<int32_t>(ctx->r5))));
-    ctx->r6 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, gear, static_cast<int32_t>(ctx->r6))));
-    ctx->r7 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, gear, static_cast<int32_t>(ctx->r7))));
+    ctx->r5 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, room, gear, static_cast<int32_t>(ctx->r5))));
+    ctx->r6 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, room, gear, static_cast<int32_t>(ctx->r6))));
+    ctx->r7 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, room, gear, static_cast<int32_t>(ctx->r7))));
 }
 
 extern "C" void remaster_chest_reward(uint8_t* rdram, recomp_context* ctx) {
@@ -204,7 +202,9 @@ extern "C" void remaster_chest_reward(uint8_t* rdram, recomp_context* ctx) {
     for (int32_t ptr : regs) {
         if (!guest_ram(ptr)) continue;
         const int id = static_cast<int>(static_cast<int8_t>(MEM_BU(0xC, ptr)));
-        const remaster::addons::ChestResult result = remaster::addons::consider_chest(id);
+        const int area = MEM_BU(0, static_cast<int64_t>(0x801BC438));
+        const int room = MEM_BU(0, static_cast<int64_t>(0x801BC439));
+        const remaster::addons::ChestResult result = remaster::addons::consider_chest(id, area, room);
         if (!result.fight) continue;
         chest = ptr;
         chest_id = id;

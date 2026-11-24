@@ -204,9 +204,11 @@ float sunken_move_scale();
 bool enter_sunken();
 bool equip_water_gear();
 bool sunken_chest_marked();
-/* Area ids are a table. 0x19 is only the current candidate. */
+/* Area 0x1D rooms 0-2. 0x19 is city streets and 0x13 is dry corridors. */
 bool sunken_area(int area);
-int scale_axis(int area, bool water_gear, int speed);
+bool sunken_room(int area, int room);
+void note_underwater(int area, int room, bool coolant);
+int scale_axis(int area, int room, bool water_gear, int speed);
 
 /* Player buttons live at +0x11C/+0x11E/+0x120 (0x80204ACC/CE/D0).
  * +0x7C is not a button word. In the action word, 0x2000 is C-down,
@@ -220,16 +222,16 @@ constexpr uint32_t kPlayerPressedGuest = 0x80204ACEu;
 constexpr uint32_t kPlayerReleasedGuest = 0x80204AD0u;
 constexpr int kPlayerButtonOffset = 0x11E;
 
-constexpr int kVanillaRightChest = 0x40; /* flag 0x440 */
-constexpr int kVanillaLeftChest = 0x41;  /* flag 0x441 */
-constexpr int kDesignatedMimicChest = -1;
+constexpr int kVanillaRightChest = 0x40; /* flag 0x440, same room, stays loot */
+constexpr int kDesignatedMimicChest = 0x41; /* flag 0x441, area 0x00 room 2 */
 void designate_mimic_chest(int id);
 int designated_mimic_chest();
 struct ChestResult {
     bool skip_reward = false;
     bool fight = false;
 };
-ChestResult consider_chest(int chest_id);
+/* area and room of -1 skip the census room check. */
+ChestResult consider_chest(int chest_id, int area = -1, int room = -1);
 void arm_mimic_at(int x, int y, int z);
 bool mimic_pending();
 int mimic_pending_x();

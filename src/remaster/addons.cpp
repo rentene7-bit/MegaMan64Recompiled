@@ -150,8 +150,8 @@ const ServbotDef kServbots[] = {
     {0x00, "Wedged in the tutorial door track."},
     {0x13, "At the market stall that sells nothing."},
     {0x13, "On the bakery roof, counting birds."},
-    {0x19, "By the sub-gate dock piling."},
-    {0x19, "Inside the empty cargo pod."},
+    {0x1D, "By the sub-gate dock piling."},
+    {0x1D, "Inside the empty cargo pod."},
     {0x12, "In the old city's dry fountain."},
     {0x12, "On the boarded hotel sign."},
     {0x07, "At the lake spillway, fishing with a stick."},
@@ -160,7 +160,7 @@ const ServbotDef kServbots[] = {
     {0x1B, "Folded in the wardrobe with the spare scarves."},
     {0x00, "On the chest that is not a chest."},
     {0x13, "Behind the courier bench."},
-    {0x19, "In the Flutter's tool drawer."},
+    {0x1B, "In the Flutter's tool drawer."},
     {0x12, "On the rebuild scaffold, holding a nail."},
     {0x07, "In the reed bed, only the antenna showing."},
     {0x1A, "Under the sparring yard tarp."},
@@ -533,19 +533,40 @@ bool sunken_chest_marked() {
     return g.sunken && (g.tools.sonar || g.sonar_marks > 0);
 }
 
-/* Provisional until Aaron confirms the flooded room on hardware. */
-const int kSunkenAreas[] = {0x19};
-constexpr int kSunkenAreaCount = 1;
+/* Area 0x1D rooms 0-2. Arrival r0 is (512, -1, 8960) yaw 0.
+ * Walking in r0 caused a game over. The hazard is unverified, so do not
+ * spawn anything in this area. */
+struct SunkenRoom {
+    int area;
+    int room;
+};
+const SunkenRoom kSunkenRooms[] = {
+    {0x1D, 0},
+    {0x1D, 1},
+    {0x1D, 2},
+};
 
-bool sunken_area(int area) {
-    for (int i = 0; i < kSunkenAreaCount; i++) {
-        if (kSunkenAreas[i] == area) return true;
+bool sunken_room(int area, int room) {
+    for (const SunkenRoom& flooded : kSunkenRooms) {
+        if (flooded.area == area && flooded.room == room) return true;
     }
     return false;
 }
 
-int scale_axis(int area, bool water_gear, int speed) {
-    if (!sunken_area(area)) return speed;
+bool sunken_area(int area) {
+    for (const SunkenRoom& flooded : kSunkenRooms) {
+        if (flooded.area == area) return true;
+    }
+    return false;
+}
+
+void note_underwater(int area, int room, bool coolant) {
+    g.sunken = sunken_room(area, room);
+    if (g.sunken && coolant) g.water_gear = true;
+}
+
+int scale_axis(int area, int room, bool water_gear, int speed) {
+    if (!sunken_room(area, room)) return speed;
     g.sunken = true;
     if (water_gear) g.water_gear = true;
     const int permille = water_gear ? 850 : 450;
@@ -561,11 +582,74 @@ int designated_mimic_chest() {
     return kDesignatedMimicChest >= 0 ? kDesignatedMimicChest : g.mimic_id;
 }
 
-ChestResult consider_chest(int chest_id) {
+struct ChestSite {
+    int flag;
+    int area;
+    int room;
+};
+
+/* Flags TESTed on room load. Chest id is flag - 0x400. 0x440 stays a normal chest. */
+const ChestSite kChestCensus[] = {
+    {0x440, 0x00, 2},
+    {0x441, 0x00, 2},
+    {0x442, 0x09, 0},
+    {0x443, 0x09, 1},
+    {0x446, 0x09, 1},
+    {0x451, 0x09, 1},
+    {0x461, 0x09, 1},
+    {0x45F, 0x09, 4},
+    {0x460, 0x09, 4},
+    {0x462, 0x09, 5},
+    {0x449, 0x09, 6},
+    {0x44A, 0x09, 6},
+    {0x452, 0x09, 6},
+    {0x453, 0x09, 6},
+    {0x45B, 0x09, 7},
+    {0x45D, 0x09, 7},
+    {0x45E, 0x09, 7},
+    {0x447, 0x09, 8},
+    {0x44D, 0x09, 8},
+    {0x44E, 0x09, 8},
+    {0x45C, 0x09, 8},
+    {0x445, 0x0E, 1},
+    {0x444, 0x0E, 2},
+    {0x44B, 0x13, 5},
+    {0x458, 0x13, 5},
+    {0x459, 0x13, 8},
+    {0x45A, 0x13, 8},
+    {0x44C, 0x13, 9},
+    {0x448, 0x14, 0},
+    {0x454, 0x14, 1},
+    {0x455, 0x14, 2},
+    {0x456, 0x14, 2},
+    {0x457, 0x14, 2},
+    {0x450, 0x1A, 0},
+    {0x466, 0x1A, 1},
+    {0x44F, 0x1A, 6},
+};
+
+const ChestSite* chest_site(int chest_id) {
+    if (chest_id < 0) return nullptr;
+    const int flag = 0x400 + chest_id;
+    for (const ChestSite& site : kChestCensus) {
+        if (site.flag == flag) return &site;
+    }
+    return nullptr;
+}
+
+bool mimic_id(int chest_id) {
+    if (chest_id < 0 || chest_id == kVanillaRightChest) return false;
+    if (chest_id == kDesignatedMimicChest) return true;
+    return g.mimic_id >= 0 && chest_id == g.mimic_id;
+}
+
+ChestResult consider_chest(int chest_id, int area, int room) {
     ChestResult result;
-    if (chest_id < 0 || chest_id == kVanillaRightChest || chest_id == kVanillaLeftChest) return result;
-    const int designated = designated_mimic_chest();
-    if (designated < 0 || chest_id != designated) return result;
+    if (!mimic_id(chest_id)) return result;
+    if (area >= 0) {
+        const ChestSite* site = chest_site(chest_id);
+        if (site == nullptr || site->area != area || site->room != room) return result;
+    }
     if (g.tools.sonar || g.sonar_marks > 0) return result;
     result.skip_reward = true;
     result.fight = true;
@@ -593,7 +677,8 @@ void note_mimic_alive(bool alive) {
     g.mimic_slot = -1;
 }
 
-/* Deck session fills area, 16.16 position, and radius. area < 0 is off. */
+/* TODO(#41): 0x1D room 0, arrival (512, -1, 8960), is the lake candidate.
+ * Shoreline XYZ is still missing, so this row stays disabled. */
 const ShorePoint kShores[] = {
     {-1, 0, 0, 0, 0},
 };
@@ -664,18 +749,19 @@ int plan_enemy_moves(uint32_t live_mask, const RemixPoint* points, int count, En
     return written;
 }
 
-/* Deck session sets enabled and the 16.16 remix position. */
+/* Main Gate 0x1A. 16.16 positions of rooms 2, 3, 4 and 6. */
 struct MirrorSlot {
+    int room;
     int x;
     int y;
     int z;
     bool enabled;
 };
 const MirrorSlot kMirrorSlots[] = {
-    {0, 0, 0, false},
-    {0, 0, 0, false},
-    {0, 0, 0, false},
-    {0, 0, 0, false},
+    {2, static_cast<int>(0x17000000u), static_cast<int>(0xFF690000u), static_cast<int>(0xEE800000u), true},
+    {3, static_cast<int>(0x00800000u), static_cast<int>(0xFF690000u), static_cast<int>(0xB5000000u), true},
+    {4, static_cast<int>(0xF7000000u), static_cast<int>(0xFEA90000u), static_cast<int>(0xC7000000u), true},
+    {6, static_cast<int>(0xF7000000u), static_cast<int>(0xFD290000u), static_cast<int>(0xF3000000u), true},
 };
 
 int mirror_point_count() {
@@ -703,7 +789,8 @@ int take_mirror_plan(uint32_t live_mask, EnemyMove* out, int cap) {
     return plan_enemy_moves(live_mask, points, count, out, cap);
 }
 
-/* #23's Deep Gate scene change fills area and entrance. Negative area is off. */
+/* TODO(#30): custodian arenas were not captured. 0x17, 0x0B, 0x07, 0x02 and
+ * 0x1E still need a retry from a loaded game. Negative area stays off. */
 const BossRoom kCustodianRooms[] = {
     {-1, -1},
 };
@@ -1155,13 +1242,13 @@ void bind_save_folder(const std::string& folder) {
 
 std::vector<ItemReport> reports() {
     return {
-        {24, ItemStatus::Done, "Sunken sub-gate", "func_8006FC34 scales fwd, vert, and side. Area 0x19 is provisional."},
+        {24, ItemStatus::Done, "Sunken sub-gate", "func_8006FC34 scales movement in area 0x1D rooms 0-2. The r0 hazard is unverified, so nothing is spawned there."},
         {25, ItemStatus::Done, "Collapse digs", "Timer, bank, and failure. Uses the current ruin."},
-        {26, ItemStatus::Done, "Mirror ruins", "Live enemies at 0x801FFBE0 move to the remix table. Coordinates are not filled yet."},
+        {26, ItemStatus::Done, "Mirror ruins", "Live enemies in area 0x1A move to rooms 2, 3, 4 and 6."},
         {27, ItemStatus::Done, "Elite variants", "The actor you hit in the gate is shielded, then damaged. Tint is bgPrim."},
-        {28, ItemStatus::Done, "Mimic chest", "func_80069754 reads chest +0xC. The designated id is not set, and 0x40/0x41 stay loot."},
+        {28, ItemStatus::Done, "Mimic chest", "Flag 0x441 in area 0x00 room 2 skips the reward. Flag 0x440 in that room stays loot."},
         {29, ItemStatus::Done, "Bonne sparring", "Five rematches, part prizes, no story flags."},
-        {30, ItemStatus::Done, "The Custodian", "Every tenth deep_gate_floor() buffs the boss in the room table. The table waits on #23."},
+        {30, ItemStatus::Partial, "The Custodian", "Buff is ready, but the arena room is still disabled. TODO: recapture 0x17, 0x0B, 0x07, 0x02 and 0x1E."},
         {31, ItemStatus::Done, "Roaming titan", "After the play-time halfword, the next actor you hit in area 0x1A is the titan."},
         {32, ItemStatus::Done, "Rival digger", "Leaving area 0x1A pays zenny back into 0x801BC406."},
         {33, ItemStatus::Done, "Digger's Guild board", "Six repeatable contracts and payouts."},
@@ -1172,7 +1259,7 @@ std::vector<ItemReport> reports() {
         {38, ItemStatus::Done, "Parts appraiser", "Fee by rarity, original junk names."},
         {39, ItemStatus::Done, "Courier job", "Skate deliveries with a time bonus."},
         {40, ItemStatus::Done, "Refractor exchange", "Daily price, twenty-shard cap."},
-        {41, ItemStatus::Done, "Lake fishing", "C-down just-pressed is 0x80204ACE & 0x2000. The lake table is empty."},
+        {41, ItemStatus::Partial, "Lake fishing", "C-down is wired. TODO: shoreline XYZ. 0x1D room 0 is only a candidate."},
         {42, ItemStatus::Done, "Weapon range", "Best score per weapon, no zenny spent."},
         {43, ItemStatus::Done, "Digger journals", "Eight original pages. A full set opens the vault flag."},
         {44, ItemStatus::Done, "Music discs", "Track index only. Audio is the player's own disc at runtime."},

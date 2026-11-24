@@ -210,8 +210,8 @@ int main() {
     expect(checklist().find("#28 done") != std::string::npos, "the mimic hook is marked done");
     expect(checklist().find("#24 done") != std::string::npos, "sunken movement is marked done");
     expect(checklist().find("#26 done") != std::string::npos, "enemy remix is marked done");
-    expect(checklist().find("#30 done") != std::string::npos, "the custodian buff is marked done");
-    expect(checklist().find("#41 done") != std::string::npos, "fishing input is marked done");
+    expect(checklist().find("#30 partial") != std::string::npos, "the custodian room stays disabled");
+    expect(checklist().find("#41 partial") != std::string::npos, "the lake shoreline stays disabled");
     reset();
     NeighborView deep;
     deep.deep_gate = true;
@@ -245,15 +245,21 @@ int main() {
     expect(kPlayerPressedGuest - kPlayerGuest == static_cast<uint32_t>(kPlayerButtonOffset), "the action word is player+0x11E");
     expect(kPlayerButtonOffset != 0x7C, "buttons are not read from player+0x7C");
     expect(kActionButton == 0x2000 && kJumpButton == 0x4000 && kFireButton == 0x8000, "C-down acts, A jumps, and B fires");
-    expect(sunken_area(0x19) && !sunken_area(0x1A), "only the sunken table slows movement");
-    expect(scale_axis(0x1A, false, 100) == 100, "dry ground keeps its speed");
-    expect(scale_axis(0x19, false, 100) == 45, "floodwater scales the axis");
-    expect(scale_axis(0x19, true, 100) == 85, "water gear keeps more speed");
-    expect(scale_axis(0x19, false, -100) == -45, "the scale keeps the sign");
+    expect(sunken_area(0x1D) && !sunken_area(0x19) && !sunken_area(0x13), "water is 0x1D, not the streets or the dry corridors");
+    expect(!sunken_room(0x1D, 3) && sunken_room(0x1D, 0) && sunken_room(0x1D, 2), "only rooms 0-2 are flooded");
+    expect(scale_axis(0x1A, 0, false, 100) == 100, "dry ground keeps its speed");
+    expect(scale_axis(0x19, 0, false, 100) == 100, "city streets are not slowed");
+    expect(scale_axis(0x1D, 0, false, 100) == 45, "floodwater scales the axis");
+    expect(scale_axis(0x1D, 1, true, 100) == 85, "water gear keeps more speed");
+    expect(scale_axis(0x1D, 2, false, -100) == -45, "the scale keeps the sign");
+    expect(scale_axis(0x1D, 5, false, 100) == 100, "a dry room in the area is full speed");
 
     reset();
-    expect(designated_mimic_chest() < 0, "no chest id is designated yet");
-    expect(!consider_chest(0x40).fight && !consider_chest(0x41).fight, "vanilla chests stay loot");
+    expect(designated_mimic_chest() == 0x41, "flag 0x441 is the mimic");
+    expect(!consider_chest(0x40).fight && consider_chest(0x41).fight, "0x440 stays loot and 0x441 fights");
+    expect(consider_chest(0x41, 0x00, 2).skip_reward, "the mimic is area 0x00 room 2");
+    expect(!consider_chest(0x41, 0x00, 1).fight, "the same id in another room is not the mimic");
+    expect(!consider_chest(0x40, 0x00, 2).skip_reward, "its twin in the same room stays a normal chest");
     designate_mimic_chest(0x40);
     expect(!consider_chest(0x40).skip_reward, "0x40 cannot be turned into a mimic");
     designate_mimic_chest(7);
@@ -279,8 +285,11 @@ int main() {
     expect(plan_enemy_moves(live, points, 2, moves, 4) == 2, "live enemies take remix points in order");
     expect(moves[0].slot == 0 && moves[0].x == 10 && moves[1].slot == 2 && moves[1].z == 60, "slots keep the point they were given");
     on_world(0x1A, 4, 0);
-    expect(take_mirror_plan(live, moves, 4) == 0, "the shipping remix table has no coordinates");
-    expect(mirror_point_count() == 0, "remix coordinates wait on the Deck");
+    expect(mirror_point_count() == 4, "the gate has four remix positions");
+    expect(take_mirror_plan(live, moves, 4) == 2, "live enemies take the Main Gate positions");
+    expect(moves[0].slot == 0 && moves[0].x == static_cast<int>(0x17000000u), "room 2 is the first position");
+    expect(moves[0].y == static_cast<int>(0xFF690000u) && moves[0].z == static_cast<int>(0xEE800000u), "room 2 keeps the 16.16 triple");
+    expect(moves[1].slot == 2 && moves[1].x == static_cast<int>(0x00800000u), "the next live enemy takes room 3");
 
     reset();
     note_deep_gate_floor(10);
