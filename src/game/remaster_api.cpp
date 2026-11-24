@@ -268,19 +268,24 @@ void note_lock_on(uint8_t* rdram) {
     if (!remaster::addon_built(remaster::AddonId::Analyzer)) {
         return;
     }
+    remaster::EnemySpot spots[remaster::kEnemySlots];
+    read_enemy_spots(rdram, spots);
     const uint32_t id = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kLockOnId)));
-    const int slot = remaster::lock_on_slot(id);
+    int slot = remaster::lock_on_slot(id);
+    if (slot < 0 || !spots[slot].live) {
+        /* The game writes 0x8017B664 only when its own search finds a
+         * candidate and both button halfwords 0x801D87C2 and 0x801D87C6
+         * have bit 0x200. Scripted Z, R, and L leave the id at 0.
+         * Fall back to the nearest live slot. */
+        const int64_t player = guest_at(0x802049B0u);
+        slot = remaster::nearest_other_enemy(
+            spots, remaster::kEnemySlots, MEM_H(0x14, player) << 16, MEM_H(0x18, player) << 16, -1, nullptr, nullptr);
+    }
     if (slot < 0) {
         remaster::addon_set_lock_hp(-1);
         return;
     }
-    const int64_t actor = enemy_addr(slot);
-    const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kEnemyLiveMask)));
-    if (!enemy_live(mask, slot, MEM_BU(0, actor))) {
-        remaster::addon_set_lock_hp(-1);
-        return;
-    }
-    remaster::addon_set_lock_hp(MEM_H(0x6E, actor));
+    remaster::addon_set_lock_hp(MEM_H(0x6E, enemy_addr(slot)));
 }
 
 } // namespace
@@ -444,13 +449,10 @@ extern "C" void remaster_shot_hit(uint8_t* rdram, recomp_context* ctx) {
         seek.from_z = MEM_W(0x24, shot);
         remaster::EnemySpot spots[remaster::kEnemySlots];
         read_enemy_spots(rdram, spots);
-        int victim_x = 0;
-        int victim_z = 0;
-        remaster::addon_victim_pos(victim_x, victim_z);
-        int hit_slot = remaster::nearest_other_enemy(spots, remaster::kEnemySlots, victim_x, victim_z, -1, nullptr, nullptr);
-        if (victim_x == 0 && victim_z == 0) {
-            hit_slot = remaster::nearest_other_enemy(spots, remaster::kEnemySlots, seek.from_x, seek.from_z, -1, nullptr, nullptr);
-        }
+        /* The enemy nearest the shot is the one just hit. Steer toward the
+         * next live slot. Lock-on is not part of this. */
+        const int hit_slot = remaster::nearest_other_enemy(
+            spots, remaster::kEnemySlots, seek.from_x, seek.from_z, -1, nullptr, nullptr);
         int chain_x = 0;
         int chain_z = 0;
         const int chain_slot = remaster::nearest_other_enemy(
@@ -591,13 +593,15 @@ extern "C" void remaster_apply_vault_door(uint8_t* rdram, recomp_context* ctx) {
     if (!remaster::addon_peek_vault_door(door)) {
         return;
     }
-    if (remaster::addon_vault_door_expired()) {
+    /* One chance. A request that cannot be written this entry is dropped,
+     * so a later room does not inherit it. */
+    if (remaster::addon_vault_door_expired() || !vault_door_gates(rdram)) {
         remaster::addon_clear_vault_door();
         return;
     }
-    if (!vault_door_gates(rdram)) {
-        return;
-    }
+    const int64_t head = guest_at(0x802047B8u);
+    MEM_W(0, head) = 0;
+    MEM_W(4, head) = 0;
     const int64_t base = guest_at(0x802047C0u);
     MEM_H(0, base) = static_cast<int16_t>(door.x);
     MEM_H(2, base) = static_cast<int16_t>(door.y);

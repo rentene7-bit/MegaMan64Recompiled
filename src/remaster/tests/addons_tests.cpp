@@ -310,9 +310,11 @@ int run_addon_tests() {
     expect(closed.zenny_delta == 0, "the flutter vault stays shut without sonar");
     AddonEdit opened_door = addon_flutter_vault(0x1B, 6, -490, -151, -210, true, true);
     expect(opened_door.zenny_delta == 800, "sonar and c-down open the flutter vault");
-    expect(!addon_peek_vault_door(door), "the flutter payout does not queue a second door");
+    expect(addon_peek_vault_door(door) && door.area == 0x1B && door.room == 7, "the press requests room 7");
+    expect(door.x == 192 && door.y == -1 && door.z == -352 && door.yaw == 0, "room 7 arrival matches the trace");
     AddonEdit twice = addon_flutter_vault(0x1B, 6, -479, -151, -223, true, true);
     expect(twice.zenny_delta == 0, "the flutter vault pays once");
+    expect(addon_peek_vault_door(door) && door.room == 7, "a later press requests the door again");
 
     ShotSeek seek;
     seek.seek = true;

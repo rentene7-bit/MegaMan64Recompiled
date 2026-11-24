@@ -906,7 +906,7 @@ void addon_clear_vault_door() {
 }
 
 bool addon_vault_door_expired() {
-    return g.vault_door_on && std::chrono::steady_clock::now() - g.vault_door_since > std::chrono::seconds(10);
+    return g.vault_door_on && std::chrono::steady_clock::now() - g.vault_door_since > std::chrono::milliseconds(500);
 }
 
 bool near_flutter_vault_door(int x, int y, int z) {
@@ -915,10 +915,17 @@ bool near_flutter_vault_door(int x, int y, int z) {
 
 AddonEdit addon_flutter_vault(int area, int room, int x, int y, int z, bool action, bool sonar_built) {
     AddonEdit edit;
-    if (!action || !sonar_built || g.flutter_vault) {
+    if (!action || !sonar_built) {
         return edit;
     }
     if (area != 0x1B || room != 6 || !near_flutter_vault_door(x, y, z)) {
+        return edit;
+    }
+    /* The room-6 spot does not start the game's own door. Each press asks
+     * for room 7. The payout stays once. */
+    addon_queue_vault_door(VaultDoor{0x1B, 7, 192, -1, -352, 0});
+    if (g.flutter_vault) {
+        edit.note = "Sealed vault door.";
         return edit;
     }
     g.flutter_vault = true;
@@ -926,8 +933,6 @@ AddonEdit addon_flutter_vault(int area, int room, int x, int y, int z, bool acti
     edit.zenny_delta = 800;
     edit.note = "Sealed vault door opened.";
     note_flag(edit, kAddonFlagOrigin + 0x93);
-    /* The game's own door already loads room 7. Queuing another request
-     * leaves the warp state set and the same door stops answering. */
     return edit;
 }
 
