@@ -838,6 +838,9 @@ int main(int argc, char** argv) {
         .message_queue_control = {},
     };
 
+#ifdef MM64R_RESEARCH
+    mm64r::install_quit_signals();
+#endif
     recomp::start(cfg);
 
     NFD_Quit();

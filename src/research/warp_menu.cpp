@@ -1,14 +1,21 @@
 #include "research.hpp"
 #include "recomp.h"
 
+#include "ultramodern/ultramodern.hpp"
+
+#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
+
+std::atomic<int> g_quit_requested{0};
 
 namespace {
 
@@ -80,8 +87,7 @@ bool g_open = false;
 bool g_warped = false;
 int g_page = 0;
 int g_index = 0;
-int g_frame = 0;
-int g_room_frame = -1000;
+std::unordered_set<int> g_chest_seen;
 int g_last_area = -1;
 int g_last_room = -1;
 int g_last_chest = -1;
@@ -376,6 +382,10 @@ void move_page(int delta) {
 }
 
 void on_pad(uint8_t* rdram) {
+    if (g_quit_requested.load() != 0) {
+        ultramodern::quit();
+        return;
+    }
     ensure_ready();
     const int64_t pad = guest_at(kPad);
     const uint16_t raw = MEM_HU(0, pad);
@@ -445,13 +455,12 @@ void on_pad(uint8_t* rdram) {
 
 void on_frame(uint8_t* rdram) {
     ensure_ready();
-    g_frame += 1;
     const int area = MEM_BU(0, guest_at(kArea));
     const int room = MEM_BU(0, guest_at(kRoom));
     if (area != g_last_area || room != g_last_room) {
         g_last_area = area;
         g_last_room = room;
-        g_room_frame = g_frame;
+        g_chest_seen.clear();
         log_state(rdram, "room");
     }
     if (!g_have_pending) {
@@ -475,8 +484,11 @@ void on_flag(uint8_t* rdram, int id, const char* verb) {
         return;
     }
     g_last_chest = id;
-    if (verb[0] == 'T' && g_frame - g_room_frame >= 60) {
-        return;
+    if (verb[0] == 'T') {
+        if (g_chest_seen.count(id) != 0) {
+            return;
+        }
+        g_chest_seen.insert(id);
     }
     char line[64];
     std::snprintf(line, sizeof(line), "chest %s %03X", verb, id);
@@ -486,7 +498,20 @@ void on_flag(uint8_t* rdram, int id, const char* verb) {
 
 } // namespace
 
+extern "C" void mm64r_on_quit_signal(int) {
+    g_quit_requested.store(1);
+}
+
 namespace mm64r {
+
+void install_quit_signals() {
+    std::signal(SIGTERM, mm64r_on_quit_signal);
+    std::signal(SIGINT, mm64r_on_quit_signal);
+}
+
+bool quit_requested() {
+    return g_quit_requested.load() != 0;
+}
 
 bool warp_blocks_save() {
     return g_warped;
@@ -507,8 +532,15 @@ extern "C" void remaster_warp_pad(uint8_t* rdram, recomp_context* ctx) {
     on_pad(rdram);
 }
 
+extern "C" void remaster_apply_vault_door(uint8_t* rdram, recomp_context* ctx);
+
 extern "C" void remaster_warp_frame(uint8_t* rdram, recomp_context* ctx) {
     (void)ctx;
+    if (mm64r::quit_requested()) {
+        ultramodern::quit();
+        return;
+    }
+    remaster_apply_vault_door(rdram, ctx);
     on_frame(rdram);
 }
 

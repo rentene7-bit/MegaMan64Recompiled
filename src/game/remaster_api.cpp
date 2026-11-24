@@ -100,6 +100,11 @@ void remember_player(uint8_t* rdram, int32_t player) {
     world.zenny = MEM_HU(0, guest_at(remaster::kZennyGuest));
     world.hp = MEM_H(0x6E, player);
     apply_edit(rdram, player, remaster::addon_apply_requests(world));
+    const bool action = (MEM_HU(remaster::kButtonPressed, player) & remaster::kActionButton) != 0;
+    const remaster::AddonEdit flutter = remaster::addon_flutter_vault(
+        world.area, world.entrance, MEM_W(0, guest_at(0x80162830u)), MEM_W(0, guest_at(0x80162834u)),
+        MEM_W(0, guest_at(0x80162838u)), action, remaster::addon_built(remaster::AddonId::Sonar));
+    apply_edit(rdram, player, flutter);
     const int buttons = MEM_HU(remaster::kButtonHeld, player);
     remaster::addon_hold_fire((buttons & remaster::kFireButton) != 0);
     if (remaster::addon_take_decoy_place()) {
@@ -557,14 +562,64 @@ extern "C" void remaster_play_voice(uint8_t* rdram, recomp_context* ctx) {
     _return(ctx, remaster::play_voice(_arg<0, s32>(rdram, ctx)) ? 1 : 0);
 }
 
+bool vault_door_gates(uint8_t* rdram) {
+    if (MEM_BU(0, guest_at(0x801BC3E8u)) != 3 || MEM_BU(0, guest_at(0x801BC3E9u)) != 2) {
+        return false;
+    }
+    if (MEM_B(0, guest_at(0x802047CCu)) != 0) {
+        return false;
+    }
+    if (MEM_H(0, guest_at(0x801FF39Au)) != 0) {
+        return false;
+    }
+    if ((static_cast<uint32_t>(MEM_W(0, guest_at(0x80203FF0u))) & 0x0F000000u) != 0) {
+        return false;
+    }
+    if (MEM_BU(0, guest_at(0x801BC5B0u)) != 0) {
+        return false;
+    }
+    const int64_t player = guest_at(0x802049B0u);
+    if (MEM_H(0x6E, player) < 0 || MEM_BU(0xBD, player) != 0 || MEM_BU(0x08, player) != 1) {
+        return false;
+    }
+    return true;
+}
+
+extern "C" void remaster_apply_vault_door(uint8_t* rdram, recomp_context* ctx) {
+    (void)ctx;
+    remaster::VaultDoor door;
+    if (!remaster::addon_peek_vault_door(door)) {
+        return;
+    }
+    if (remaster::addon_vault_door_expired()) {
+        remaster::addon_clear_vault_door();
+        return;
+    }
+    if (!vault_door_gates(rdram)) {
+        return;
+    }
+    const int64_t base = guest_at(0x802047C0u);
+    MEM_H(0, base) = static_cast<int16_t>(door.x);
+    MEM_H(2, base) = static_cast<int16_t>(door.y);
+    MEM_H(4, base) = static_cast<int16_t>(door.z);
+    MEM_H(6, base) = static_cast<int16_t>(door.yaw);
+    MEM_HU(0xA, base) = static_cast<uint16_t>(door.yaw);
+    MEM_B(0, guest_at(0x802047CDu)) = 0;
+    MEM_B(0, guest_at(0x802047CEu)) = static_cast<int8_t>(door.area);
+    MEM_B(0, guest_at(0x802047CFu)) = static_cast<int8_t>(door.room);
+    MEM_B(0, guest_at(0x802047D0u)) = 2;
+    MEM_B(0, guest_at(0x802047D1u)) = static_cast<int8_t>(0x15);
+    MEM_B(0, guest_at(0x802047CCu)) = 2;
+    remaster::addon_clear_vault_door();
+}
+
 #ifndef MM64R_RESEARCH
 extern "C" void remaster_warp_pad(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;
     (void)ctx;
 }
 extern "C" void remaster_warp_frame(uint8_t* rdram, recomp_context* ctx) {
-    (void)rdram;
-    (void)ctx;
+    remaster_apply_vault_door(rdram, ctx);
 }
 extern "C" void remaster_warp_flag_test(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;

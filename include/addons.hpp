@@ -279,6 +279,22 @@ int addon_charge_meter();
 bool addon_charge_built();
 bool addon_request_scene_reload();
 bool addon_take_scene_reload();
+
+struct VaultDoor {
+    int area = 0;
+    int room = 0;
+    int x = 0;
+    int y = 0;
+    int z = 0;
+    int yaw = 0;
+};
+
+void addon_queue_vault_door(const VaultDoor& door);
+bool addon_peek_vault_door(VaultDoor& door);
+void addon_clear_vault_door();
+bool addon_vault_door_expired();
+bool near_flutter_vault_door(int x, int y, int z);
+AddonEdit addon_flutter_vault(int area, int room, int x, int y, int z, bool action, bool sonar_built);
 void addon_note_enemy_hp(int hp);
 void addon_note_enemy_hit(int hp, int damage);
 void addon_set_lock_hp(int hp);

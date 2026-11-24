@@ -15,6 +15,8 @@ bool script_active();
 void apply_input(uint16_t* buttons, float* x, float* y);
 bool wants_autostart();
 void log_line(const std::string& line);
+void install_quit_signals();
+bool quit_requested();
 bool warp_blocks_save();
 const char* warp_banner();
 const char* warp_menu_line();

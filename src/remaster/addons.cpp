@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -69,6 +71,10 @@ struct State {
     bool heavy_pending = false;
     int chain_left = 0;
     bool scene_reload = false;
+    bool vault_door_on = false;
+    VaultDoor vault_door{};
+    std::chrono::steady_clock::time_point vault_door_since{};
+    bool flutter_vault = false;
     int enemy_hp = -1;
     int last_damage = -1;
     int decoy_ticks = 0;
@@ -217,6 +223,16 @@ AddonEdit open_vault(const AddonView& world) {
     if (slot == 1) {
         g.junk[index_of(AddonId::Charge)] = true;
         g.junk[index_of(AddonId::Pierce)] = true;
+    }
+    /* Same-area side rooms from the exit table. The game loads them from the
+     * door request; these calls do not write the area or room bytes. */
+    static const VaultDoor kDoors[] = {
+        {0x00, 3, -256, -385, -1920, 2048},
+        {0x13, 12, 192, -1, -352, 0},
+        {0x1A, 6, -2304, -577, -3328, 0},
+    };
+    if (slot >= 0 && slot < 3) {
+        addon_queue_vault_door(kDoors[slot]);
     }
     return edit;
 }
@@ -868,6 +884,49 @@ bool addon_take_scene_reload() {
     const bool pending = g.scene_reload;
     g.scene_reload = false;
     return pending;
+}
+
+void addon_queue_vault_door(const VaultDoor& door) {
+    g.vault_door = door;
+    g.vault_door_on = true;
+    g.vault_door_since = std::chrono::steady_clock::now();
+}
+
+bool addon_peek_vault_door(VaultDoor& door) {
+    if (!g.vault_door_on) {
+        return false;
+    }
+    door = g.vault_door;
+    return true;
+}
+
+void addon_clear_vault_door() {
+    g.vault_door_on = false;
+}
+
+bool addon_vault_door_expired() {
+    return g.vault_door_on && std::chrono::steady_clock::now() - g.vault_door_since > std::chrono::seconds(10);
+}
+
+bool near_flutter_vault_door(int x, int y, int z) {
+    return std::abs(x - (-479)) <= 96 && std::abs(y - (-151)) <= 64 && std::abs(z - (-223)) <= 96;
+}
+
+AddonEdit addon_flutter_vault(int area, int room, int x, int y, int z, bool action, bool sonar_built) {
+    AddonEdit edit;
+    if (!action || !sonar_built || g.flutter_vault) {
+        return edit;
+    }
+    if (area != 0x1B || room != 6 || !near_flutter_vault_door(x, y, z)) {
+        return edit;
+    }
+    g.flutter_vault = true;
+    g.built[index_of(AddonId::Vaults)] = true;
+    edit.zenny_delta = 800;
+    edit.note = "Sealed vault door opened.";
+    note_flag(edit, kAddonFlagOrigin + 0x93);
+    addon_queue_vault_door(VaultDoor{0x1B, 7, 192, -1, -352, 0});
+    return edit;
 }
 
 void addon_note_enemy_hp(int hp) {

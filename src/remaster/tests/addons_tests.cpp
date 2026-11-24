@@ -297,6 +297,23 @@ int run_addon_tests() {
     addon_command(AddonVerb::Ping, AddonId::Sonar, world);
     AddonEdit grabbed = addon_command(AddonVerb::UseGear, AddonId::Grapple, world);
     expect(grabbed.zenny_delta == 1200, "grapple action opens the marked vault");
+    VaultDoor door;
+    expect(addon_peek_vault_door(door) && door.area == 0x13 && door.room == 12, "grapple vault requests the corridor");
+    expect(door.x == 192 && door.y == -1 && door.z == -352 && door.yaw == 0, "corridor arrival matches the door trace");
+
+    addon_reset();
+    expect(!near_flutter_vault_door(0, 0, 0), "the flutter door is a specific spot");
+    expect(near_flutter_vault_door(-479, -151, -223), "the traced press is at the flutter door");
+    AddonEdit away = addon_flutter_vault(0x1B, 6, 0, 0, 0, true, true);
+    expect(away.zenny_delta == 0, "c-down away from the door does not open it");
+    AddonEdit closed = addon_flutter_vault(0x1B, 6, -479, -151, -223, true, false);
+    expect(closed.zenny_delta == 0, "the flutter vault stays shut without sonar");
+    AddonEdit opened_door = addon_flutter_vault(0x1B, 6, -490, -151, -210, true, true);
+    expect(opened_door.zenny_delta == 800, "sonar and c-down open the flutter vault");
+    expect(addon_peek_vault_door(door) && door.area == 0x1B && door.room == 7, "the door requests room 7");
+    expect(door.x == 192 && door.z == -352 && door.yaw == 0, "room 7 arrival matches the trace");
+    AddonEdit twice = addon_flutter_vault(0x1B, 6, -479, -151, -223, true, true);
+    expect(twice.zenny_delta == 0, "the flutter vault pays once");
 
     ShotSeek seek;
     seek.seek = true;
