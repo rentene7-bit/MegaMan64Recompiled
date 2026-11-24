@@ -187,9 +187,10 @@ int main() {
     bits = NeighborView{};
     bits.fusion = true;
     bits.deep_gate = true;
+    note_deep_gate_floor(3);
     note_neighbor(bits);
     expect(tool_hooks().fusion, "fusion flag 0xC0D turns the stub on");
-    expect(deep_gate_floor() >= 10, "Deep Gate flag 0xCA0 arms the custodian floor");
+    expect(deep_gate_floor() == 3, "the 0xCA0 bit does not replace the floor");
     reset();
     note_zenny(0);
     on_world(0x1A, 2, 0);
@@ -206,7 +207,11 @@ int main() {
     expect(zenny() == 0, "reset clears zenny");
     expect(deserialize(saved), "save text loads");
     expect(checklist().find("#29 done") != std::string::npos, "sparring is marked done");
-    expect(checklist().find("#28 blocked") != std::string::npos, "the mimic stays blocked");
+    expect(checklist().find("#28 done") != std::string::npos, "the mimic hook is marked done");
+    expect(checklist().find("#24 done") != std::string::npos, "sunken movement is marked done");
+    expect(checklist().find("#26 done") != std::string::npos, "enemy remix is marked done");
+    expect(checklist().find("#30 done") != std::string::npos, "the custodian buff is marked done");
+    expect(checklist().find("#41 done") != std::string::npos, "fishing input is marked done");
     reset();
     NeighborView deep;
     deep.deep_gate = true;
@@ -235,6 +240,75 @@ int main() {
     expect(!lab_ready(), "the lab stays shut away from the Flutter");
     on_world(0x1B, 1, 0);
     expect(lab_ready(), "docking with grapple, sonar, and fusion opens the lab");
+
+    reset();
+    expect(kPlayerPressedGuest - kPlayerGuest == static_cast<uint32_t>(kPlayerButtonOffset), "the action word is player+0x11E");
+    expect(kPlayerButtonOffset != 0x7C, "buttons are not read from player+0x7C");
+    expect(kActionButton == 0x2000 && kJumpButton == 0x4000 && kFireButton == 0x8000, "C-down acts, A jumps, and B fires");
+    expect(sunken_area(0x19) && !sunken_area(0x1A), "only the sunken table slows movement");
+    expect(scale_axis(0x1A, false, 100) == 100, "dry ground keeps its speed");
+    expect(scale_axis(0x19, false, 100) == 45, "floodwater scales the axis");
+    expect(scale_axis(0x19, true, 100) == 85, "water gear keeps more speed");
+    expect(scale_axis(0x19, false, -100) == -45, "the scale keeps the sign");
+
+    reset();
+    expect(designated_mimic_chest() < 0, "no chest id is designated yet");
+    expect(!consider_chest(0x40).fight && !consider_chest(0x41).fight, "vanilla chests stay loot");
+    designate_mimic_chest(0x40);
+    expect(!consider_chest(0x40).skip_reward, "0x40 cannot be turned into a mimic");
+    designate_mimic_chest(7);
+    expect(consider_chest(7).skip_reward && consider_chest(7).fight, "the designated chest skips the reward");
+    set_tool_hooks(ToolHooks{true, false, false, false});
+    expect(!consider_chest(7).fight, "sonar makes that chest safe");
+    set_tool_hooks({});
+    arm_mimic_at(9, 8, 7);
+    expect(mimic_pending() && mimic_pending_x() == 9, "the fight waits for a live enemy");
+    note_mimic_placed(2);
+    expect(!mimic_pending() && mimic_slot() == 2, "the first live enemy is pulled to the chest");
+    note_mimic_alive(true);
+    expect(mimic_slot() == 2, "the mimic stays up while that slot is live");
+    note_mimic_alive(false);
+    expect(mimic_slot() < 0, "a cleared slot ends the mimic");
+
+    reset();
+    const uint32_t live = 0x80000000u | (0x80000000u >> 2);
+    expect(enemy_live(live, 0) && enemy_live(live, 2) && !enemy_live(live, 1), "the live mask is bit 31-slot");
+    expect(first_live_enemy(live) == 0, "the first live slot is the mimic");
+    const RemixPoint points[] = {{10, 20, 30}, {40, 50, 60}};
+    EnemyMove moves[4];
+    expect(plan_enemy_moves(live, points, 2, moves, 4) == 2, "live enemies take remix points in order");
+    expect(moves[0].slot == 0 && moves[0].x == 10 && moves[1].slot == 2 && moves[1].z == 60, "slots keep the point they were given");
+    on_world(0x1A, 4, 0);
+    expect(take_mirror_plan(live, moves, 4) == 0, "the shipping remix table has no coordinates");
+    expect(mirror_point_count() == 0, "remix coordinates wait on the Deck");
+
+    reset();
+    note_deep_gate_floor(10);
+    expect(buff_existing_boss(100, 10) == 200, "a tenth floor adds the custodian's health");
+    expect(buff_existing_boss(100, 19) == 100, "other floors leave the boss alone");
+    BossRoom rooms[] = {{5, 2}};
+    expect(custodian_room(5, 2, rooms, 1), "a listed room is the custodian fight");
+    expect(!custodian_room(5, 3, rooms, 1), "a different entrance is not");
+    expect(custodian_room_count() == 0, "the shipping room table waits on add-on 23");
+    expect(!custodian_buff_due(4, 100), "an unlisted room is not buffed");
+
+    reset();
+    expect(shore_count() == 1 && !player_at_shore(0x12, 0, 0, 0), "the lake row is present and unset");
+    const ShorePoint shore{0x12, 100, 0, 0, 50};
+    expect(at_shore(0x12, 100, 0, 0, &shore, 1), "a filled shoreline accepts the player");
+    expect(!at_shore(0x12, 1000, 0, 0, &shore, 1), "a far point is not the shore");
+    CastUpdate cast = update_cast(true, kJumpButton, kJumpButton, 0, 1.0);
+    expect(!cast.started, "jump does not cast");
+    cast = update_cast(true, kFireButton, kFireButton, 0, 1.0);
+    expect(!cast.started, "fire is not the action button");
+    cast = update_cast(false, kActionButton, kActionButton, 0, 1.0);
+    expect(!cast.started, "C-down away from shore does not cast");
+    cast = update_cast(true, kActionButton, kActionButton, 0, 0.5);
+    expect(cast.started && !cast.finished, "C-down starts a cast");
+    cast = update_cast(true, 0, kActionButton, 0, 0.5);
+    expect(!cast.finished, "holding the line keeps the cast");
+    cast = update_cast(true, 0, 0, kActionButton, 0.0);
+    expect(cast.finished && std::string(cast.caught.name).find("snapped") == std::string::npos, "releasing the line lands a fish");
 
     if (g_failed != 0) {
         std::cerr << g_failed << " failed\n";

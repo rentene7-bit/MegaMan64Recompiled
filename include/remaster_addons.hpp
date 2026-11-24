@@ -204,6 +204,74 @@ float sunken_move_scale();
 bool enter_sunken();
 bool equip_water_gear();
 bool sunken_chest_marked();
+/* Area ids are a table. 0x19 is only the current candidate. */
+bool sunken_area(int area);
+int scale_axis(int area, bool water_gear, int speed);
+
+/* Player buttons live at +0x11C/+0x11E/+0x120 (0x80204ACC/CE/D0).
+ * +0x7C is not a button word. In the action word, 0x2000 is C-down,
+ * 0x4000 is A/jump, and 0x8000 is B/fire. */
+constexpr uint16_t kActionButton = 0x2000;
+constexpr uint16_t kJumpButton = 0x4000;
+constexpr uint16_t kFireButton = 0x8000;
+constexpr uint32_t kPlayerGuest = 0x802049B0u;
+constexpr uint32_t kPlayerHeldGuest = 0x80204ACCu;
+constexpr uint32_t kPlayerPressedGuest = 0x80204ACEu;
+constexpr uint32_t kPlayerReleasedGuest = 0x80204AD0u;
+constexpr int kPlayerButtonOffset = 0x11E;
+
+constexpr int kVanillaRightChest = 0x40; /* flag 0x440 */
+constexpr int kVanillaLeftChest = 0x41;  /* flag 0x441 */
+constexpr int kDesignatedMimicChest = -1;
+void designate_mimic_chest(int id);
+int designated_mimic_chest();
+struct ChestResult {
+    bool skip_reward = false;
+    bool fight = false;
+};
+ChestResult consider_chest(int chest_id);
+void arm_mimic_at(int x, int y, int z);
+bool mimic_pending();
+int mimic_pending_x();
+int mimic_pending_y();
+int mimic_pending_z();
+void note_mimic_placed(int slot);
+int mimic_slot();
+void note_mimic_alive(bool alive);
+
+constexpr uint32_t kEnemyPool = 0x801FFBE0u;
+constexpr uint32_t kEnemyStride = 0x3C8u;
+constexpr int kEnemySlots = 18;
+constexpr uint32_t kEnemyLiveMask = 0x801E8EB4u;
+constexpr int kActorPosX = 0x1C;
+constexpr int kActorPosY = 0x20;
+constexpr int kActorPosZ = 0x24;
+struct RemixPoint {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+};
+struct EnemyMove {
+    int slot = -1;
+    int x = 0;
+    int y = 0;
+    int z = 0;
+};
+int mirror_point_count();
+bool enemy_live(uint32_t mask, int slot);
+int first_live_enemy(uint32_t mask);
+int plan_enemy_moves(uint32_t live_mask, const RemixPoint* points, int count, EnemyMove* out, int cap);
+int take_mirror_plan(uint32_t live_mask, EnemyMove* out, int cap);
+
+struct BossRoom {
+    int area = -1;
+    int entrance = -1;
+};
+int custodian_room_count();
+bool custodian_room(int area, int entrance, const BossRoom* rooms, int count);
+int buff_existing_boss(int hp, int floor);
+bool custodian_buff_due(int actor, int hp);
+void note_custodian_buff(int actor);
 
 bool start_collapse(int prize, double seconds);
 void tick(double dt);
@@ -267,6 +335,23 @@ struct Catch {
     int zenny = 0;
 };
 Catch reel_fish(int cast_id, double seconds);
+
+struct ShorePoint {
+    int area = -1;
+    int x = 0;
+    int y = 0;
+    int z = 0;
+    int radius = 0;
+};
+int shore_count();
+bool at_shore(int area, int x, int y, int z, const ShorePoint* shores, int count);
+bool player_at_shore(int area, int x, int y, int z);
+struct CastUpdate {
+    bool started = false;
+    bool finished = false;
+    Catch caught;
+};
+CastUpdate update_cast(bool on_shore, uint16_t pressed, uint16_t held, uint16_t released, double dt);
 
 std::vector<int> flag_writes();
 std::string serialize();

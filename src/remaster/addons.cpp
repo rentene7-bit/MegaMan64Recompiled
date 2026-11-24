@@ -61,6 +61,20 @@ struct State {
     bool (*play)(int, int) = nullptr;
     bool saw_deep = false;
     int sonar_marks = 0;
+    int mimic_id = -1;
+    bool mimic_pull = false;
+    int mimic_x = 0;
+    int mimic_y = 0;
+    int mimic_z = 0;
+    int mimic_slot = -1;
+    bool mimic_defeated = false;
+    bool mirror_dirty = false;
+    bool casting = false;
+    double cast_time = 0;
+    int cast_serial = 1;
+    bool fish_done = false;
+    int custodian_actor = 0;
+    int custodian_floor = -1;
     bool mirror_on = false;
     int elite_hp = 0;
     int elite_max = 36;
@@ -208,10 +222,7 @@ void note_neighbor(const NeighborView& view) {
     if (view.coolant) g.tools.coolant = true;
     if (view.fusion) g.tools.fusion = true;
     if (view.sonar_marks > g.sonar_marks) g.sonar_marks = view.sonar_marks;
-    if (view.deep_gate && !g.saw_deep) {
-        g.saw_deep = true;
-        if (g.deep_floor < 10) g.deep_floor = 10;
-    }
+    if (view.deep_gate) g.saw_deep = true;
 }
 NeighborView neighbor() {
     NeighborView view;
@@ -522,6 +533,218 @@ bool sunken_chest_marked() {
     return g.sunken && (g.tools.sonar || g.sonar_marks > 0);
 }
 
+/* Provisional until Aaron confirms the flooded room on hardware. */
+const int kSunkenAreas[] = {0x19};
+constexpr int kSunkenAreaCount = 1;
+
+bool sunken_area(int area) {
+    for (int i = 0; i < kSunkenAreaCount; i++) {
+        if (kSunkenAreas[i] == area) return true;
+    }
+    return false;
+}
+
+int scale_axis(int area, bool water_gear, int speed) {
+    if (!sunken_area(area)) return speed;
+    g.sunken = true;
+    if (water_gear) g.water_gear = true;
+    const int permille = water_gear ? 850 : 450;
+    const int64_t num = static_cast<int64_t>(speed) * permille;
+    const int64_t rounded = num >= 0 ? (num + 500) / 1000 : (num - 500) / 1000;
+    if (rounded > 32767) return 32767;
+    if (rounded < -32768) return -32768;
+    return static_cast<int>(rounded);
+}
+
+void designate_mimic_chest(int id) { g.mimic_id = id; }
+int designated_mimic_chest() {
+    return kDesignatedMimicChest >= 0 ? kDesignatedMimicChest : g.mimic_id;
+}
+
+ChestResult consider_chest(int chest_id) {
+    ChestResult result;
+    if (chest_id < 0 || chest_id == kVanillaRightChest || chest_id == kVanillaLeftChest) return result;
+    const int designated = designated_mimic_chest();
+    if (designated < 0 || chest_id != designated) return result;
+    if (g.tools.sonar || g.sonar_marks > 0) return result;
+    result.skip_reward = true;
+    result.fight = true;
+    return result;
+}
+
+void arm_mimic_at(int x, int y, int z) {
+    g.mimic_pull = true;
+    g.mimic_x = x;
+    g.mimic_y = y;
+    g.mimic_z = z;
+}
+bool mimic_pending() { return g.mimic_pull; }
+int mimic_pending_x() { return g.mimic_x; }
+int mimic_pending_y() { return g.mimic_y; }
+int mimic_pending_z() { return g.mimic_z; }
+void note_mimic_placed(int slot) {
+    g.mimic_pull = false;
+    g.mimic_slot = slot;
+}
+int mimic_slot() { return g.mimic_slot; }
+void note_mimic_alive(bool alive) {
+    if (g.mimic_slot < 0 || alive) return;
+    g.mimic_defeated = true;
+    g.mimic_slot = -1;
+}
+
+/* Deck session fills area, 16.16 position, and radius. area < 0 is off. */
+const ShorePoint kShores[] = {
+    {-1, 0, 0, 0, 0},
+};
+
+int shore_count() { return static_cast<int>(sizeof(kShores) / sizeof(kShores[0])); }
+
+bool player_at_shore(int area, int x, int y, int z) {
+    return at_shore(area, x, y, z, kShores, shore_count());
+}
+
+bool at_shore(int area, int x, int y, int z, const ShorePoint* shores, int count) {
+    if (shores == nullptr || count <= 0) return false;
+    for (int i = 0; i < count; i++) {
+        const ShorePoint& shore = shores[i];
+        if (shore.area != area || shore.radius <= 0) continue;
+        const int64_t dx = static_cast<int64_t>(x) - shore.x;
+        const int64_t dy = static_cast<int64_t>(y) - shore.y;
+        const int64_t dz = static_cast<int64_t>(z) - shore.z;
+        const int64_t radius = shore.radius;
+        if (dx * dx + dy * dy + dz * dz <= radius * radius) return true;
+    }
+    return false;
+}
+
+CastUpdate update_cast(bool on_shore, uint16_t pressed, uint16_t held, uint16_t released, double dt) {
+    CastUpdate update;
+    const bool down = (pressed & kActionButton) != 0;
+    const bool holding = (held & kActionButton) != 0;
+    const bool up = (released & kActionButton) != 0;
+    if (!g.casting && on_shore && down) {
+        g.casting = true;
+        g.cast_time = 0;
+        update.started = true;
+        return update;
+    }
+    if (!g.casting) return update;
+    if (holding && dt > 0) g.cast_time += dt;
+    if (up || !holding) {
+        update.caught = reel_fish(g.cast_serial++, g.cast_time);
+        update.finished = true;
+        g.casting = false;
+        g.fish_done = true;
+    }
+    return update;
+}
+
+bool enemy_live(uint32_t mask, int slot) {
+    if (slot < 0 || slot >= kEnemySlots) return false;
+    return (mask & (0x80000000u >> slot)) != 0;
+}
+
+int first_live_enemy(uint32_t mask) {
+    for (int slot = 0; slot < kEnemySlots; slot++) {
+        if (enemy_live(mask, slot)) return slot;
+    }
+    return -1;
+}
+
+int plan_enemy_moves(uint32_t live_mask, const RemixPoint* points, int count, EnemyMove* out, int cap) {
+    if (points == nullptr || out == nullptr || count <= 0 || cap <= 0) return 0;
+    int written = 0;
+    int point = 0;
+    for (int slot = 0; slot < kEnemySlots && point < count && written < cap; slot++) {
+        if (!enemy_live(live_mask, slot)) continue;
+        out[written++] = EnemyMove{slot, points[point].x, points[point].y, points[point].z};
+        point++;
+    }
+    return written;
+}
+
+/* Deck session sets enabled and the 16.16 remix position. */
+struct MirrorSlot {
+    int x;
+    int y;
+    int z;
+    bool enabled;
+};
+const MirrorSlot kMirrorSlots[] = {
+    {0, 0, 0, false},
+    {0, 0, 0, false},
+    {0, 0, 0, false},
+    {0, 0, 0, false},
+};
+
+int mirror_point_count() {
+    int count = 0;
+    for (const MirrorSlot& slot : kMirrorSlots) {
+        if (slot.enabled) count++;
+    }
+    return count;
+}
+
+int take_mirror_plan(uint32_t live_mask, EnemyMove* out, int cap) {
+    if (!g.mirror_dirty) return 0;
+    RemixPoint points[4];
+    int count = 0;
+    for (const MirrorSlot& slot : kMirrorSlots) {
+        if (!slot.enabled || count >= 4) continue;
+        points[count++] = RemixPoint{slot.x, slot.y, slot.z};
+    }
+    if (count == 0) {
+        g.mirror_dirty = false;
+        return 0;
+    }
+    if (first_live_enemy(live_mask) < 0) return 0;
+    g.mirror_dirty = false;
+    return plan_enemy_moves(live_mask, points, count, out, cap);
+}
+
+/* #23's Deep Gate scene change fills area and entrance. Negative area is off. */
+const BossRoom kCustodianRooms[] = {
+    {-1, -1},
+};
+
+int custodian_room_count() {
+    int count = 0;
+    for (const BossRoom& room : kCustodianRooms) {
+        if (room.area >= 0) count++;
+    }
+    return count;
+}
+
+bool custodian_room(int area, int entrance, const BossRoom* rooms, int count) {
+    if (rooms == nullptr || count <= 0) return false;
+    for (int i = 0; i < count; i++) {
+        if (rooms[i].area < 0) continue;
+        if (rooms[i].area == area && rooms[i].entrance == entrance) return true;
+    }
+    return false;
+}
+
+Custodian custodian_for_floor(int floor);
+
+int buff_existing_boss(int hp, int floor) {
+    const Custodian boss = custodian_for_floor(floor);
+    if (!boss.active || hp <= 0) return hp;
+    const int buffed = hp + boss.hp;
+    return buffed > 32767 ? 32767 : buffed;
+}
+
+bool custodian_buff_due(int actor, int hp) {
+    if (actor == 0 || hp <= 0) return false;
+    if (g.custodian_actor == actor && g.custodian_floor == g.deep_floor) return false;
+    return custodian_room(g.area, g.entrance, kCustodianRooms, static_cast<int>(sizeof(kCustodianRooms) / sizeof(kCustodianRooms[0])));
+}
+
+void note_custodian_buff(int actor) {
+    g.custodian_actor = actor;
+    g.custodian_floor = g.deep_floor;
+}
+
 bool start_collapse(int prize, double seconds) {
     if (g.collapse || prize <= 0 || seconds <= 0) return false;
     g.collapse = true;
@@ -578,6 +801,7 @@ void on_world(int area_id, int entrance, int play_frames) {
         if (g.tools.sonar) add_flutter_part(2);
         if (g.tools.fusion) add_flutter_part(3);
     }
+    if (changed && area_id == 0x1A) g.mirror_dirty = true;
     if (area_id == 0x1A && !g.mirror_on) {
         g.mirror_on = true;
         const auto remix = mirror_remix(area_id);
@@ -828,6 +1052,8 @@ std::vector<int> flag_writes() {
     if (g.trophy) push_flag(out, FlutterTrophy);
     if (journals_complete()) push_flag(out, JournalsComplete);
     if (g.disc_played) push_flag(out, DiscPlayed);
+    if (g.fish_done) push_flag(out, FishingCast);
+    if (g.mimic_defeated) push_flag(out, MimicDefeated);
     if (g.paint_open[1] || g.paint_open[2] || g.paint_open[3]) push_flag(out, PaintUnlocked);
     if (g.mirror_on) push_flag(out, EliteEnabled);
     if (g.elite_done) push_flag(out, MirrorCleared0);
@@ -929,13 +1155,13 @@ void bind_save_folder(const std::string& folder) {
 
 std::vector<ItemReport> reports() {
     return {
-        {24, ItemStatus::Blocked, "Sunken sub-gate", "No confirmed player-speed field, so the live actor is not slowed."},
+        {24, ItemStatus::Done, "Sunken sub-gate", "func_8006FC34 scales fwd, vert, and side. Area 0x19 is provisional."},
         {25, ItemStatus::Done, "Collapse digs", "Timer, bank, and failure. Uses the current ruin."},
-        {26, ItemStatus::Blocked, "Mirror ruins", "No confirmed actor-spawn function, so remix slots are never created."},
+        {26, ItemStatus::Done, "Mirror ruins", "Live enemies at 0x801FFBE0 move to the remix table. Coordinates are not filled yet."},
         {27, ItemStatus::Done, "Elite variants", "The actor you hit in the gate is shielded, then damaged. Tint is bgPrim."},
-        {28, ItemStatus::Blocked, "Mimic chest", "No chest-open function is hooked, so a mimic never intercepts an open."},
+        {28, ItemStatus::Done, "Mimic chest", "func_80069754 reads chest +0xC. The designated id is not set, and 0x40/0x41 stay loot."},
         {29, ItemStatus::Done, "Bonne sparring", "Five rematches, part prizes, no story flags."},
-        {30, ItemStatus::Blocked, "The Custodian", "0xCA0 is not a floor count, and there is no custodian actor to attach."},
+        {30, ItemStatus::Done, "The Custodian", "Every tenth deep_gate_floor() buffs the boss in the room table. The table waits on #23."},
         {31, ItemStatus::Done, "Roaming titan", "After the play-time halfword, the next actor you hit in area 0x1A is the titan."},
         {32, ItemStatus::Done, "Rival digger", "Leaving area 0x1A pays zenny back into 0x801BC406."},
         {33, ItemStatus::Done, "Digger's Guild board", "Six repeatable contracts and payouts."},
@@ -946,7 +1172,7 @@ std::vector<ItemReport> reports() {
         {38, ItemStatus::Done, "Parts appraiser", "Fee by rarity, original junk names."},
         {39, ItemStatus::Done, "Courier job", "Skate deliveries with a time bonus."},
         {40, ItemStatus::Done, "Refractor exchange", "Daily price, twenty-shard cap."},
-        {41, ItemStatus::Blocked, "Lake fishing", "No confirmed action-button address, so a cast cannot be read."},
+        {41, ItemStatus::Done, "Lake fishing", "C-down just-pressed is 0x80204ACE & 0x2000. The lake table is empty."},
         {42, ItemStatus::Done, "Weapon range", "Best score per weapon, no zenny spent."},
         {43, ItemStatus::Done, "Digger journals", "Eight original pages. A full set opens the vault flag."},
         {44, ItemStatus::Done, "Music discs", "Track index only. Audio is the player's own disc at runtime."},

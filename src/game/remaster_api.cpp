@@ -65,6 +65,19 @@ bool addon_flag_set(uint8_t* rdram, int id) {
     return (MEM_BU(0, static_cast<int64_t>(addr)) & mask) != 0;
 }
 
+void place_enemy(uint8_t* rdram, int slot, int x, int y, int z) {
+    if (slot < 0 || slot >= remaster::addons::kEnemySlots) return;
+    const uint32_t actor = remaster::addons::kEnemyPool + static_cast<uint32_t>(slot) * remaster::addons::kEnemyStride;
+    const int32_t guest = static_cast<int32_t>(actor);
+    MEM_W(remaster::addons::kActorPosX, guest) = x;
+    MEM_W(remaster::addons::kActorPosY, guest) = y;
+    MEM_W(remaster::addons::kActorPosZ, guest) = z;
+}
+
+uint32_t enemy_mask(uint8_t* rdram) {
+    return static_cast<uint32_t>(MEM_W(0, static_cast<int64_t>(remaster::addons::kEnemyLiveMask)));
+}
+
 void addon_flag_raise(uint8_t* rdram, int id) {
     if (id < remaster::addons::kFlagLo || id > remaster::addons::kFlagHi) {
         return;
@@ -99,11 +112,37 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     }
     bits.sonar_marks = marks;
     remaster::addons::note_neighbor(bits);
-    if (bits.coolant && area == 0x19) {
+    if (remaster::addons::sunken_area(area)) {
         remaster::addons::enter_sunken();
-        remaster::addons::equip_water_gear();
+        if (bits.coolant) remaster::addons::equip_water_gear();
     }
     remaster::addons::on_world(area, entrance, frames);
+
+    const int32_t player = static_cast<int32_t>(remaster::addons::kPlayerGuest);
+    const int px = MEM_W(remaster::addons::kActorPosX, player);
+    const int py = MEM_W(remaster::addons::kActorPosY, player);
+    const int pz = MEM_W(remaster::addons::kActorPosZ, player);
+    /* Just-pressed, held, and released action words. Not player+0x7C. */
+    const auto pressed = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(remaster::addons::kPlayerPressedGuest)));
+    const auto held = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(remaster::addons::kPlayerHeldGuest)));
+    const auto released = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(remaster::addons::kPlayerReleasedGuest)));
+    remaster::addons::update_cast(remaster::addons::player_at_shore(area, px, py, pz), pressed, held, released, 1.0 / 60.0);
+
+    remaster::addons::EnemyMove moves[remaster::addons::kEnemySlots];
+    const uint32_t live = enemy_mask(rdram);
+    const int move_count = remaster::addons::take_mirror_plan(live, moves, remaster::addons::kEnemySlots);
+    for (int i = 0; i < move_count; i++) {
+        place_enemy(rdram, moves[i].slot, moves[i].x, moves[i].y, moves[i].z);
+    }
+    if (remaster::addons::mimic_pending()) {
+        const int slot = remaster::addons::first_live_enemy(live);
+        if (slot >= 0) {
+            place_enemy(rdram, slot, remaster::addons::mimic_pending_x(), remaster::addons::mimic_pending_y(), remaster::addons::mimic_pending_z());
+            remaster::addons::note_mimic_placed(slot);
+        }
+    } else if (remaster::addons::mimic_slot() >= 0) {
+        remaster::addons::note_mimic_alive(remaster::addons::enemy_live(live, remaster::addons::mimic_slot()));
+    }
     const int settled = remaster::addons::settle_zenny(zenny);
     if (settled != zenny) {
         MEM_H(0, static_cast<int64_t>(0x801BC406)) = static_cast<int16_t>(static_cast<uint16_t>(settled));
@@ -132,16 +171,60 @@ extern "C" void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
     int hp = MEM_H(0x6E, actor);
-    const int encounter_hp = remaster::addons::claim_actor(actor);
-    if (encounter_hp > 0) {
-        hp = encounter_hp;
+    if (remaster::addons::custodian_buff_due(actor, hp)) {
+        hp = remaster::addons::buff_existing_boss(hp, remaster::addons::deep_gate_floor());
         MEM_H(0x6E, actor) = static_cast<int16_t>(hp);
+        remaster::addons::note_custodian_buff(actor);
+    } else {
+        const int encounter_hp = remaster::addons::claim_actor(actor);
+        if (encounter_hp > 0) {
+            hp = encounter_hp;
+            MEM_H(0x6E, actor) = static_cast<int16_t>(hp);
+        }
     }
     int id = static_cast<int>((static_cast<uint32_t>(actor) >> 4) & 0x7fffu);
     if (id == 0) {
         id = 1;
     }
     remaster::note_actor_hp(id, hp);
+}
+
+extern "C" void remaster_scale_move(uint8_t* rdram, recomp_context* ctx) {
+    const int area = MEM_BU(0, static_cast<int64_t>(0x801BC438));
+    const bool gear = addon_flag_set(rdram, remaster::addons::kNeighborCoolant) || remaster::addons::tool_hooks().coolant;
+    ctx->r5 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, gear, static_cast<int32_t>(ctx->r5))));
+    ctx->r6 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, gear, static_cast<int32_t>(ctx->r6))));
+    ctx->r7 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, gear, static_cast<int32_t>(ctx->r7))));
+}
+
+extern "C" void remaster_chest_reward(uint8_t* rdram, recomp_context* ctx) {
+    const int32_t regs[2] = {static_cast<int32_t>(ctx->r16), static_cast<int32_t>(ctx->r17)};
+    int32_t chest = 0;
+    int chest_id = -1;
+    for (int32_t ptr : regs) {
+        if (!guest_ram(ptr)) continue;
+        const int id = static_cast<int>(static_cast<int8_t>(MEM_BU(0xC, ptr)));
+        const remaster::addons::ChestResult result = remaster::addons::consider_chest(id);
+        if (!result.fight) continue;
+        chest = ptr;
+        chest_id = id;
+        break;
+    }
+    if (!guest_ram(chest)) return;
+    (void)chest_id;
+    /* kind 1 is zenny. A zero value grants nothing, so the caller still consumes the chest. */
+    ctx->r5 = static_cast<gpr>(1);
+    ctx->r6 = static_cast<gpr>(0);
+    const int x = MEM_W(remaster::addons::kActorPosX, chest);
+    const int y = MEM_W(remaster::addons::kActorPosY, chest);
+    const int z = MEM_W(remaster::addons::kActorPosZ, chest);
+    const int slot = remaster::addons::first_live_enemy(enemy_mask(rdram));
+    if (slot < 0) {
+        remaster::addons::arm_mimic_at(x, y, z);
+        return;
+    }
+    place_enemy(rdram, slot, x, y, z);
+    remaster::addons::note_mimic_placed(slot);
 }
 
 extern "C" void remaster_patch_flags(uint8_t* rdram, recomp_context* ctx) {

@@ -20,6 +20,8 @@ void remaster_note_player_ctx(uint8_t* rdram, recomp_context* ctx);
 void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx);
 void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx);
 void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx);
+void remaster_scale_move(uint8_t* rdram, recomp_context* ctx);
+void remaster_chest_reward(uint8_t* rdram, recomp_context* ctx);
 void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx);
 }
 

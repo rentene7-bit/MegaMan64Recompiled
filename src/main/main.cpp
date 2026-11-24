@@ -719,6 +719,8 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(remaster_scale_damage);
     REGISTER_FUNC(remaster_note_boss_bar);
     REGISTER_FUNC(remaster_addons_on_player);
+    REGISTER_FUNC(remaster_scale_move);
+    REGISTER_FUNC(remaster_chest_reward);
     REGISTER_FUNC(recomp_get_camera_inputs);
     //REGISTER_FUNC(recomp_get_target_framerate);
     //REGISTER_FUNC(recomp_get_autosave_enabled);
