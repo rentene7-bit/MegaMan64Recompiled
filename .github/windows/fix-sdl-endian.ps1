@@ -26,12 +26,13 @@ if (-not $files) {
 }
 $patched = 0
 foreach ($file in $files) {
-    $text = [System.IO.File]::ReadAllText($file.FullName)
+    $text = [System.IO.File]::ReadAllText($file.FullName) -replace "`r`n", "`n" -replace "`r", "`n"
     if ($text.Contains("#if __clang_major__ < 21")) {
         Write-Host "Already guarded $($file.FullName)"
         continue
     }
     if (-not $text.Contains($old)) {
+        Write-Host "No _m_prefetch definition in $($file.FullName)"
         continue
     }
     [System.IO.File]::WriteAllText($file.FullName, $text.Replace($old, $new))
