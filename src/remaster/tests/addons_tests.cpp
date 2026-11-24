@@ -291,14 +291,19 @@ int main() {
     EnemyMove moves[4];
     expect(plan_enemy_moves(live, points, 2, moves, 4) == 2, "live enemies take remix points in order");
     expect(moves[0].slot == 0 && moves[0].x == 10 && moves[1].slot == 2 && moves[1].z == 60, "slots keep the point they were given");
+    int slot_hp[18] = {};
+    slot_hp[0] = 0;
+    slot_hp[2] = 160;
+    const uint32_t fought = mirror_candidates(live, slot_hp, 18);
+    expect(fought == (0x80000000u >> 2), "a 0-HP live slot is not a mirror target");
     on_world(0x1A, 4, 0);
     expect(mirror_point_count() == 4, "the gate has four remix positions");
-    expect(take_mirror_plan(live, moves, 4) == 1, "only the current room's spot is applied");
-    expect(moves[0].slot == 0 && moves[0].x == static_cast<int>(0xF7000000u), "room 4 keeps its X");
+    expect(take_mirror_plan(fought, moves, 4) == 1, "only the current room's spot is applied");
+    expect(moves[0].slot == 2 && moves[0].x == static_cast<int>(0xF9800000u), "room 4 stands 640 units off the arrival X");
     expect(moves[0].y == static_cast<int>(0xFF3F0000u), "room 4 Y is the warp frame");
-    expect(take_mirror_plan(live, moves, 4) == 0, "the same room is not applied twice");
+    expect(take_mirror_plan(fought, moves, 4) == 1, "the spot is held while the room is current");
     on_world(0x1B, 0, 0);
-    expect(take_mirror_plan(live, moves, 4) == 0, "leaving the gate clears a pending remix");
+    expect(take_mirror_plan(fought, moves, 4) == 0, "leaving the gate clears a pending remix");
 
     reset();
     note_deep_gate_floor(10);
@@ -310,6 +315,13 @@ int main() {
     expect(custodian_room_count() == 1, "the custodian uses one room");
     on_world(0x17, 0, 0);
     expect(custodian_buff_due(4, 100), "room 0 of area 0x17 is the custodian");
+    int stand_x = 0;
+    int stand_y = 0;
+    int stand_z = 0;
+    int stand_hp = 0;
+    custodian_spot(&stand_x, &stand_y, &stand_z, &stand_hp);
+    expect(stand_x == static_cast<int>(0x02A10000u) && stand_y == static_cast<int>(0xFFFF0000u) && stand_z == 0, "the custodian stands clear of the arrival point");
+    expect(stand_hp > 0, "the spawned custodian has health");
     on_world(0x17, 2, 0);
     expect(!custodian_buff_due(4, 100), "room 2 is the void and is not used");
     on_world(0x17, 3, 0);

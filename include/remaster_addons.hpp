@@ -268,6 +268,8 @@ int mirror_point_count();
 bool enemy_live(uint32_t mask, int slot);
 int first_live_enemy(uint32_t mask);
 int plan_enemy_moves(uint32_t live_mask, const RemixPoint* points, int count, EnemyMove* out, int cap);
+/* Live bit and HP both required. A 0-HP slot can still have its bit set. */
+uint32_t mirror_candidates(uint32_t live_mask, const int* hp, int slots);
 int take_mirror_plan(uint32_t live_mask, EnemyMove* out, int cap);
 
 struct BossRoom {

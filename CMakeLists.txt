@@ -84,10 +84,33 @@ target_include_directories(RecompiledFuncs PRIVATE
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/N64Recomp/include
 )
 
-file(GLOB FUNC_C_SOURCES ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
-file(GLOB FUNC_CXX_SOURCES ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
+file(GLOB FUNC_C_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
+file(GLOB FUNC_CXX_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
 
 target_sources(RecompiledFuncs PRIVATE ${FUNC_C_SOURCES} ${FUNC_CXX_SOURCES})
+
+# us.rev1.toml hooks are compiled into RecompiledFuncs. Regenerate that C
+# before compiling it, or a new hook is absent from the binary.
+if (WIN32)
+    set(N64RECOMP_EXE "${CMAKE_SOURCE_DIR}/N64Recomp.exe")
+else()
+    set(N64RECOMP_EXE "${CMAKE_SOURCE_DIR}/N64Recomp")
+endif()
+set(RECOMP_GAME_STAMP "${CMAKE_BINARY_DIR}/recomp_game.stamp")
+add_custom_command(
+    OUTPUT "${RECOMP_GAME_STAMP}"
+    COMMAND "${N64RECOMP_EXE}" "${CMAKE_SOURCE_DIR}/us.rev1.toml"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${RECOMP_GAME_STAMP}"
+    DEPENDS "${CMAKE_SOURCE_DIR}/us.rev1.toml"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Regenerating RecompiledFuncs from us.rev1.toml"
+    VERBATIM
+)
+add_custom_target(RecompGame DEPENDS "${RECOMP_GAME_STAMP}")
+add_dependencies(RecompiledFuncs RecompGame)
+foreach (recomp_src ${FUNC_C_SOURCES} ${FUNC_CXX_SOURCES})
+    set_source_files_properties("${recomp_src}" PROPERTIES OBJECT_DEPENDS "${RECOMP_GAME_STAMP}")
+endforeach()
 
 # PatchesLib - Library containing the recompiled output for any custom function patches
 add_library(PatchesLib STATIC)

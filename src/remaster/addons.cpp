@@ -69,7 +69,7 @@ struct State {
     int mimic_slot = -1;
     bool mimic_defeated = false;
     bool mirror_dirty = false;
-    int mirror_applied = 0;
+    int mirror_hold = 0;
     bool custodian_here = false;
     bool custodian_actor_set = false;
     bool casting = false;
@@ -742,6 +742,17 @@ int first_live_enemy(uint32_t mask) {
     return -1;
 }
 
+uint32_t mirror_candidates(uint32_t live_mask, const int* hp, int slots) {
+    if (hp == nullptr || slots <= 0) return 0;
+    uint32_t out = 0;
+    const int count = slots < kEnemySlots ? slots : kEnemySlots;
+    for (int slot = 0; slot < count; slot++) {
+        if (!enemy_live(live_mask, slot) || hp[slot] <= 0) continue;
+        out |= 0x80000000u >> slot;
+    }
+    return out;
+}
+
 int plan_enemy_moves(uint32_t live_mask, const RemixPoint* points, int count, EnemyMove* out, int cap) {
     if (points == nullptr || out == nullptr || count <= 0 || cap <= 0) return 0;
     int written = 0;
@@ -778,23 +789,24 @@ int mirror_point_count() {
     return count;
 }
 
+/* 640 units of X, in 16.16. The recorded spots are Mega Man's arrival points. */
+constexpr int kMirrorClearX = 0x02800000;
+
 int take_mirror_plan(uint32_t live_mask, EnemyMove* out, int cap) {
     if (g.area != 0x1A) {
         g.mirror_dirty = false;
-        g.mirror_applied = 0;
+        g.mirror_hold = 0;
         return 0;
     }
-    if (!g.mirror_dirty) return 0;
-    const int room_bit = 1 << (g.entrance & 31);
-    if ((g.mirror_applied & room_bit) != 0) return 0;
+    if (g.mirror_hold <= 0) return 0;
     RemixPoint points[4];
     int count = 0;
     for (const MirrorSlot& slot : kMirrorSlots) {
         if (!slot.enabled || slot.room != g.entrance || count >= 4) continue;
-        points[count++] = RemixPoint{slot.x, slot.y, slot.z};
+        points[count++] = RemixPoint{slot.x + kMirrorClearX, slot.y, slot.z};
     }
     if (count == 0 || first_live_enemy(live_mask) < 0) return 0;
-    g.mirror_applied |= room_bit;
+    g.mirror_hold--;
     return plan_enemy_moves(live_mask, points, count, out, cap);
 }
 
@@ -844,8 +856,9 @@ void note_custodian_buff(int actor) {
 bool custodian_ready() { return g.custodian_here; }
 
 void custodian_spot(int* x, int* y, int* z, int* hp) {
-    /* Stable integer stand (33, -151, 0). Actor Y uses the warp frame. */
-    if (x) *x = static_cast<int>(0x00210000u);
+    /* Stable integer stand (33, -151, 0), actor Y in the warp frame.
+     * Shifted 640 units on X so the actor is not inside Mega Man. */
+    if (x) *x = static_cast<int>(0x00210000u) + kMirrorClearX;
     if (y) *y = static_cast<int>(0xFFFF0000u);
     if (z) *z = 0;
     int floor = g.deep_floor;
@@ -895,7 +908,7 @@ void on_world(int area_id, int entrance, int play_frames) {
     const bool room_changed = entrance != g.entrance;
     if (changed && g.area == 0x1A) {
         g.mirror_dirty = false;
-        g.mirror_applied = 0;
+        g.mirror_hold = 0;
     }
     note_area(area_id, entrance);
     g.custodian_here = area_id == 0x17 && entrance == 0;
@@ -919,7 +932,10 @@ void on_world(int area_id, int entrance, int play_frames) {
         if (g.tools.sonar) add_flutter_part(2);
         if (g.tools.fusion) add_flutter_part(3);
     }
-    if (area_id == 0x1A && (changed || room_changed)) g.mirror_dirty = true;
+    if (area_id == 0x1A && (changed || room_changed)) {
+        g.mirror_dirty = true;
+        g.mirror_hold = 480;
+    }
     if (area_id == 0x1A && !g.mirror_on) {
         g.mirror_on = true;
         const auto remix = mirror_remix(area_id);
