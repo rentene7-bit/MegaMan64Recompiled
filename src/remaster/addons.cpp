@@ -743,7 +743,13 @@ int first_live_enemy(uint32_t mask) {
 }
 
 bool fighter_class(int type) {
-    return type != 0 && type != kSlotClassChest;
+    return type == kSlotClassFighter;
+}
+
+bool actor_header_dispatches(uint32_t header) {
+    const int cls = static_cast<int>((header >> 24) & 0xffu);
+    const int kind = static_cast<int>((header >> 8) & 0xffu);
+    return cls == kSlotClassFighter && kind != 0;
 }
 
 uint32_t fighter_slots(uint32_t live_mask, const int* hp, const int* type, int slots) {

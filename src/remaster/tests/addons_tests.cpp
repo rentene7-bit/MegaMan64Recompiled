@@ -300,6 +300,10 @@ int main() {
     slot_type[2] = kSlotClassFighter;
     const uint32_t fought = fighter_slots(live, slot_hp, slot_type, 18);
     expect(!fighter_class(kSlotClassChest) && fighter_class(kSlotClassFighter), "chests are not fighters");
+    expect(actor_header_dispatches(0x03214301u), "the deck fighter header has an update type");
+    expect(!actor_header_dispatches(0x01200000u), "class 1 does not dispatch an update");
+    expect(!actor_header_dispatches(0x00200000u), "a blank allocator slot does not dispatch");
+    expect(!actor_header_dispatches(0x07203500u), "a chest header is not a fighter dispatch");
     expect(fought == (0x80000000u >> 2), "a chest with HP is not a mirror target");
     on_world(0x1A, 4, 0);
     expect(mirror_point_count() == 4, "the gate has four remix positions");

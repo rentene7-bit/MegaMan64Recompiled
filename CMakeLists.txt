@@ -90,24 +90,24 @@ else()
     set(N64RECOMP_EXE "${CMAKE_SOURCE_DIR}/N64Recomp")
 endif()
 
-file(GLOB FUNC_C_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
-file(GLOB FUNC_CXX_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
-
-# A clean checkout has no generated C. If the recompiler is already built, run
-# it now so this configure sees the real sources. Otherwise keep a placeholder
-# so configure does not fail with "No SOURCES given to target".
-if (NOT FUNC_C_SOURCES AND NOT FUNC_CXX_SOURCES AND EXISTS "${N64RECOMP_EXE}")
+# Generate before the only glob. A second CONFIGURE_DEPENDS glob in the same
+# configure, after N64Recomp has filled the directory, trips the glob cache.
+set(RECOMP_GEN_STAMP "${CMAKE_SOURCE_DIR}/RecompiledFuncs/.n64recomp-stamp")
+if (EXISTS "${N64RECOMP_EXE}" AND NOT EXISTS "${RECOMP_GEN_STAMP}")
+    file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/RecompiledFuncs")
     execute_process(
         COMMAND "${N64RECOMP_EXE}" "${CMAKE_SOURCE_DIR}/us.rev1.toml"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         RESULT_VARIABLE RECOMP_CONFIGURE_RESULT
     )
-    file(GLOB FUNC_C_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
-    file(GLOB FUNC_CXX_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
-    if (NOT RECOMP_CONFIGURE_RESULT EQUAL 0)
+    if (RECOMP_CONFIGURE_RESULT EQUAL 0)
+        file(WRITE "${RECOMP_GEN_STAMP}" "generated\n")
+    else()
         message(STATUS "N64Recomp did not generate sources during configure (${RECOMP_CONFIGURE_RESULT})")
     endif()
 endif()
+file(GLOB FUNC_C_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
+file(GLOB FUNC_CXX_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
 if (NOT FUNC_C_SOURCES AND NOT FUNC_CXX_SOURCES)
     set(RECOMP_PLACEHOLDER "${CMAKE_BINARY_DIR}/recomp_placeholder.c")
     file(WRITE "${RECOMP_PLACEHOLDER}" "/* N64Recomp fills RecompiledFuncs on the first build. */\n")
