@@ -717,6 +717,8 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(remaster_note_player);
     REGISTER_FUNC(remaster_note_player_ctx);
     REGISTER_FUNC(remaster_scale_damage);
+    REGISTER_FUNC(remaster_enemy_pool);
+    REGISTER_FUNC(remaster_retarget_player);
     REGISTER_FUNC(remaster_note_boss_bar);
     REGISTER_FUNC(remaster_shot_spawn);
     REGISTER_FUNC(remaster_shot_hit);

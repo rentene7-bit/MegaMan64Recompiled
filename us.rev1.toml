@@ -210,7 +210,30 @@ func = "func_80069A64_44E64"
 before_vram = 0x80069A64
 text = "remaster_note_player_ctx(rdram, ctx);"
 
-# Generic hurt: r16 is the victim, r17 is the damage after defense, HP is at +0x6E.
+# Enemy list update. HP diffs here are the hits the player-only hurt function never sees.
+[[patches.hook]]
+func = "func_8004BFB0_273B0"
+before_vram = 0x8004BFB0
+text = "remaster_enemy_pool(rdram, ctx);"
+
+# While a decoy is out, aim helpers that point at player+0x14 (0x802049C4) point at the decoy.
+[[patches.hook]]
+func = "func_8004F820_2AC20"
+before_vram = 0x8004F820
+text = "remaster_retarget_player(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8004EC38_2A038"
+before_vram = 0x8004EC38
+text = "remaster_retarget_player(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8004DDE8_291E8"
+before_vram = 0x8004DDE8
+text = "remaster_retarget_player(rdram, ctx);"
+
+# Player hurt only. r16 is the victim, r17 is the damage after defense, HP is at +0x6E.
+# This function is called from the player update, not for enemy HP.
 [[patches.hook]]
 func = "func_8006E838_49C38"
 before_vram = 0x8006E9E0

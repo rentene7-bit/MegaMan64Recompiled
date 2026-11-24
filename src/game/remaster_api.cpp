@@ -24,6 +24,9 @@ int64_t guest_at(uint32_t address) {
     return static_cast<int64_t>(static_cast<int32_t>(address));
 }
 
+void nudge_pickups(uint8_t* rdram, int32_t player);
+void note_lock_on(uint8_t* rdram);
+
 bool read_flag(uint8_t* rdram, int id) {
     const int64_t at = guest_at(remaster::kFlagBase + static_cast<uint32_t>(id >> 3));
     const uint8_t mask = static_cast<uint8_t>(0x80u >> (id & 7));
@@ -97,8 +100,14 @@ void remember_player(uint8_t* rdram, int32_t player) {
     world.zenny = MEM_HU(0, guest_at(remaster::kZennyGuest));
     world.hp = MEM_H(0x6E, player);
     apply_edit(rdram, player, remaster::addon_apply_requests(world));
-    const int buttons = MEM_HU(0x7C, player);
+    const int buttons = MEM_HU(remaster::kButtonHeld, player);
     remaster::addon_hold_fire((buttons & remaster::kFireButton) != 0);
+    if (remaster::addon_take_decoy_place()) {
+        const int64_t decoy = guest_at(remaster::kDecoyPosGuest);
+        MEM_H(0, decoy) = MEM_H(0x14, player);
+        MEM_H(2, decoy) = MEM_H(0x16, player);
+        MEM_H(4, decoy) = MEM_H(0x18, player);
+    }
     if (remaster::addon_charge_built()) {
         MEM_BU(0, guest_at(remaster::kPartByteGuest + 1u)) = 0;
     }
@@ -151,6 +160,122 @@ void remember_player(uint8_t* rdram, int32_t player) {
         MEM_BU(0, equipped_at) = static_cast<uint8_t>(pending);
     }
     remaster::note_equipped_weapon(MEM_BU(0, equipped_at));
+    nudge_pickups(rdram, player);
+    note_lock_on(rdram);
+}
+
+bool enemy_live(uint32_t mask, int slot) {
+    return (mask & (0x80000000u >> slot)) != 0;
+}
+
+int64_t enemy_addr(int slot) {
+    return guest_at(remaster::kEnemyPool + static_cast<uint32_t>(slot * remaster::kEnemyStride));
+}
+
+void read_enemy_spots(uint8_t* rdram, remaster::EnemySpot* spots) {
+    const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kEnemyLiveMask)));
+    for (int slot = 0; slot < remaster::kEnemySlots; ++slot) {
+        spots[slot].live = enemy_live(mask, slot);
+        if (!spots[slot].live) {
+            continue;
+        }
+        const int64_t actor = enemy_addr(slot);
+        spots[slot].x = MEM_W(0x1C, actor);
+        spots[slot].z = MEM_W(0x24, actor);
+    }
+}
+
+void apply_enemy_drop(uint8_t* rdram, int32_t actor, int drop) {
+    remaster::OutgoingHit hit;
+    hit.amount = drop;
+    hit.victim_is_player = false;
+    hit.heavy = remaster::addon_heavy_pending();
+    hit.chain = remaster::addon_chain_hits();
+    hit.coolant = remaster::addon_built(remaster::AddonId::Coolant);
+    hit.bounce_penalty = remaster::addon_built(remaster::AddonId::Bounce);
+    hit.disc = remaster::addon_built(remaster::AddonId::Disc);
+    hit.yank = remaster::addon_yank_armed();
+    hit.stagger = remaster::addon_stagger_left();
+    hit.resonance = remaster::addon_built(remaster::AddonId::Resonance);
+    hit.mastery = remaster::addon_mastery_bonus();
+    const remaster::OutgoingHitOut out = remaster::adjust_outgoing_hit(hit);
+    remaster::addon_set_heavy(out.heavy_left);
+    remaster::addon_store_chain(out.chain_left);
+    remaster::addon_set_stagger(out.stagger_left);
+    remaster::addon_set_yank(out.yank_left);
+    const int extra = out.amount - drop;
+    int next = MEM_H(0x6E, actor) - extra;
+    if (next < 0) {
+        next = 0;
+    }
+    if (next > 32767) {
+        next = 32767;
+    }
+    MEM_H(0x6E, actor) = static_cast<int16_t>(next);
+    remaster::addon_note_enemy_hit(next, out.amount);
+    remaster::addon_note_victim(actor);
+    remaster::addon_note_victim_pos(MEM_W(0x1C, actor), MEM_W(0x24, actor));
+    if (out.zero_velocity) {
+        MEM_H(0x44, actor) = 0;
+        MEM_H(0x48, actor) = 0;
+        if (hit.coolant) {
+            remaster::addon_start_freeze();
+        }
+    }
+    if (out.knockback != 0) {
+        int vel = MEM_H(0x48, actor) + out.knockback;
+        if (vel > 32767) {
+            vel = 32767;
+        }
+        if (vel < -32768) {
+            vel = -32768;
+        }
+        MEM_H(0x48, actor) = static_cast<int16_t>(vel);
+    }
+}
+
+int prev_enemy_hp[remaster::kEnemySlots] = {};
+bool seen_enemy_hp[remaster::kEnemySlots] = {};
+
+void nudge_pickups(uint8_t* rdram, int32_t player) {
+    if (!remaster::addon_built(remaster::AddonId::Magnet) || !guest_ram(player)) {
+        return;
+    }
+    const int player_x = MEM_H(0x14, player);
+    const int player_z = MEM_H(0x18, player);
+    for (int slot = 0; slot < remaster::kPickupSlots; ++slot) {
+        const int64_t drop = guest_at(remaster::kPickupPool + static_cast<uint32_t>(slot * remaster::kPickupStride));
+        if (MEM_BU(remaster::kPickupTypeOff, drop) != remaster::kPickupDropType) {
+            continue;
+        }
+        remaster::DropNudge nudge;
+        nudge.drop_x = MEM_H(0x38, drop);
+        nudge.drop_z = MEM_H(0x3C, drop);
+        nudge.player_x = player_x;
+        nudge.player_z = player_z;
+        const remaster::DropNudgeOut moved = remaster::nudge_drop(nudge);
+        MEM_H(0x38, drop) = static_cast<int16_t>(moved.x);
+        MEM_H(0x3C, drop) = static_cast<int16_t>(moved.z);
+    }
+}
+
+void note_lock_on(uint8_t* rdram) {
+    if (!remaster::addon_built(remaster::AddonId::Analyzer)) {
+        return;
+    }
+    const uint32_t id = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kLockOnId)));
+    int slot = remaster::lock_on_slot(id);
+    const uint32_t pool = remaster::kEnemyPool;
+    const uint32_t pool_end = pool + static_cast<uint32_t>(remaster::kEnemySlots * remaster::kEnemyStride);
+    if (slot < 0 && id >= pool && id < pool_end) {
+        slot = static_cast<int>((id - pool) / remaster::kEnemyStride);
+    }
+    const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kEnemyLiveMask)));
+    if (slot < 0 || slot >= remaster::kEnemySlots || !enemy_live(mask, slot)) {
+        remaster::addon_set_lock_hp(-1);
+        return;
+    }
+    remaster::addon_set_lock_hp(MEM_H(0x6E, enemy_addr(slot)));
 }
 
 } // namespace
@@ -170,46 +295,54 @@ extern "C" void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx) {
     const bool known = guest_ram(player);
     const bool is_player = known && victim == player;
     const int scaled = remaster::scale_damage_amount(known, is_player, amount);
+    /* func_8006E838 runs from the player update, so the victim is the player.
+     * Enemy HP is adjusted from the enemy list in remaster_enemy_pool. */
+    if (!is_player) {
+        ctx->r17 = static_cast<gpr>(static_cast<int64_t>(scaled));
+        return;
+    }
     remaster::OutgoingHit hit;
     hit.amount = scaled;
-    hit.victim_is_player = is_player;
-    hit.heavy = remaster::addon_heavy_pending();
-    hit.chain = remaster::addon_chain_hits();
+    hit.victim_is_player = true;
     hit.decoy = remaster::addon_decoy_ticks() > 0;
-    hit.coolant = remaster::addon_built(remaster::AddonId::Coolant);
-    hit.bounce_penalty = remaster::addon_built(remaster::AddonId::Bounce);
-    hit.disc = remaster::addon_built(remaster::AddonId::Disc);
-    hit.yank = remaster::addon_yank_armed();
-    hit.stagger = remaster::addon_stagger_left();
-    hit.resonance = remaster::addon_built(remaster::AddonId::Resonance);
-    hit.mastery = remaster::addon_mastery_bonus();
     const remaster::OutgoingHitOut out = remaster::adjust_outgoing_hit(hit);
-    remaster::addon_set_heavy(out.heavy_left);
-    remaster::addon_store_chain(out.chain_left);
-    remaster::addon_set_stagger(out.stagger_left);
-    remaster::addon_set_yank(out.yank_left);
     ctx->r17 = static_cast<gpr>(static_cast<int64_t>(out.amount));
-    if (!is_player && guest_ram(victim)) {
-        remaster::addon_note_enemy_hit(MEM_H(0x6E, victim), out.amount);
-        remaster::addon_note_victim(victim);
-        remaster::addon_note_victim_pos(MEM_W(0x1C, victim), MEM_W(0x24, victim));
-        if (out.zero_velocity) {
-            MEM_H(0x44, victim) = 0;
-            MEM_H(0x48, victim) = 0;
-            if (hit.coolant) {
-                remaster::addon_start_freeze();
-            }
+}
+
+extern "C" void remaster_enemy_pool(uint8_t* rdram, recomp_context* ctx) {
+    (void)ctx;
+    const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kEnemyLiveMask)));
+    for (int slot = 0; slot < remaster::kEnemySlots; ++slot) {
+        if (!enemy_live(mask, slot)) {
+            seen_enemy_hp[slot] = false;
+            continue;
         }
-        if (out.knockback != 0) {
-            int next = MEM_H(0x48, victim) + out.knockback;
-            if (next > 32767) {
-                next = 32767;
-            }
-            if (next < -32768) {
-                next = -32768;
-            }
-            MEM_H(0x48, victim) = static_cast<int16_t>(next);
+        const int32_t actor = static_cast<int32_t>(enemy_addr(slot));
+        int hp_now = MEM_H(0x6E, actor);
+        if (seen_enemy_hp[slot] && hp_now < prev_enemy_hp[slot]) {
+            apply_enemy_drop(rdram, actor, prev_enemy_hp[slot] - hp_now);
+            hp_now = MEM_H(0x6E, actor);
         }
+        prev_enemy_hp[slot] = hp_now;
+        seen_enemy_hp[slot] = true;
+    }
+}
+
+extern "C" void remaster_retarget_player(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    if (!remaster::addon_retarget_active()) {
+        return;
+    }
+    const gpr player_pos = static_cast<gpr>(static_cast<int64_t>(static_cast<int32_t>(remaster::kPlayerPos16)));
+    const gpr decoy = static_cast<gpr>(static_cast<int64_t>(static_cast<int32_t>(remaster::kDecoyPosGuest)));
+    if (static_cast<int32_t>(ctx->r4) == static_cast<int32_t>(player_pos)) {
+        ctx->r4 = decoy;
+    }
+    if (static_cast<int32_t>(ctx->r5) == static_cast<int32_t>(player_pos)) {
+        ctx->r5 = decoy;
+    }
+    if (static_cast<int32_t>(ctx->r6) == static_cast<int32_t>(player_pos)) {
+        ctx->r6 = decoy;
     }
 }
 
@@ -304,7 +437,23 @@ extern "C" void remaster_shot_hit(uint8_t* rdram, recomp_context* ctx) {
         seek.vel_z = vel_z;
         seek.from_x = MEM_W(0x1C, shot);
         seek.from_z = MEM_W(0x24, shot);
-        remaster::addon_victim_pos(seek.to_x, seek.to_z);
+        remaster::EnemySpot spots[remaster::kEnemySlots];
+        read_enemy_spots(rdram, spots);
+        int victim_x = 0;
+        int victim_z = 0;
+        remaster::addon_victim_pos(victim_x, victim_z);
+        int hit_slot = remaster::nearest_other_enemy(spots, remaster::kEnemySlots, victim_x, victim_z, -1, nullptr, nullptr);
+        if (victim_x == 0 && victim_z == 0) {
+            hit_slot = remaster::nearest_other_enemy(spots, remaster::kEnemySlots, seek.from_x, seek.from_z, -1, nullptr, nullptr);
+        }
+        int chain_x = 0;
+        int chain_z = 0;
+        const int chain_slot = remaster::nearest_other_enemy(
+            spots, remaster::kEnemySlots, seek.from_x, seek.from_z, hit_slot, &chain_x, &chain_z);
+        if (chain_slot >= 0) {
+            seek.to_x = chain_x;
+            seek.to_z = chain_z;
+        }
         const remaster::ShotSeekOut steered = remaster::steer_shot(seek);
         vel_x = steered.vel_x;
         vel_z = steered.vel_z;

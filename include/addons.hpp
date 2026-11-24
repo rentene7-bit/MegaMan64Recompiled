@@ -106,7 +106,28 @@ int addon_built_flag(AddonId id);
 constexpr int kShotLight = 0x4208;
 constexpr int kShotHeavy = 0x6208;
 constexpr uint32_t kPartByteGuest = 0x80204E00u;
-constexpr int kFireButton = 0x4000;
+/* Player+0x11C is the held word at 0x80204ACC. Fire is B, 0x8000.
+ * 0x4000 in that word is A (jump). Pressed-edge is +0x11E (0x80204ACE). */
+constexpr int kButtonHeld = 0x11C;
+constexpr int kButtonPressed = 0x11E;
+constexpr int kFireButton = 0x8000;
+constexpr int kJumpButton = 0x4000;
+constexpr int kActionButton = 0x2000;
+constexpr int kLockButton = 0x200;
+
+constexpr uint32_t kEnemyPool = 0x801FFBE0u;
+constexpr int kEnemyStride = 0x3C8;
+constexpr int kEnemySlots = 18;
+constexpr uint32_t kEnemyLiveMask = 0x801E8EB4u;
+constexpr uint32_t kPickupPool = 0x801ADD70u;
+constexpr int kPickupStride = 0x58;
+constexpr int kPickupSlots = 64;
+constexpr int kPickupTypeOff = 0x2;
+constexpr int kPickupDropType = 0x87;
+constexpr uint32_t kLockOnId = 0x8017B664u;
+constexpr uint32_t kPlayerPos16 = 0x802049C4u;
+/* Past addon flags 0xC00-0xCFF (which end at 0x80205747). Three s16s. */
+constexpr uint32_t kDecoyPosGuest = 0x80205800u;
 
 struct ShotSpawn {
     int half = kShotLight;
@@ -260,6 +281,34 @@ bool addon_request_scene_reload();
 bool addon_take_scene_reload();
 void addon_note_enemy_hp(int hp);
 void addon_note_enemy_hit(int hp, int damage);
+void addon_set_lock_hp(int hp);
+void addon_arm_decoy_place();
+bool addon_take_decoy_place();
+bool addon_retarget_active();
+
+struct EnemySpot {
+    int x = 0;
+    int z = 0;
+    bool live = false;
+};
+
+/* Index of the nearest live enemy that is not exclude, or -1. */
+int nearest_other_enemy(const EnemySpot* spots, int count, int from_x, int from_z, int exclude, int* out_x, int* out_z);
+
+struct DropNudge {
+    int drop_x = 0;
+    int drop_z = 0;
+    int player_x = 0;
+    int player_z = 0;
+};
+
+struct DropNudgeOut {
+    int x = 0;
+    int z = 0;
+};
+
+DropNudgeOut nudge_drop(const DropNudge& in);
+int lock_on_slot(uint32_t id);
 std::string addon_hud_line();
 std::string addon_menu_line();
 MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft, int pos_x, int pos_z);

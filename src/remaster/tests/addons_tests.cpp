@@ -335,9 +335,26 @@ int run_addon_tests() {
     world = rich();
     addon_command(AddonVerb::FindJunk, AddonId::Analyzer, world);
     addon_command(AddonVerb::Build, AddonId::Analyzer, world);
-    addon_note_enemy_hit(40, 7);
+    addon_set_lock_hp(40);
+    addon_note_enemy_hit(12, 7);
     const std::string hud = addon_hud_line();
-    expect(hud.find("HP 40") != std::string::npos && hud.find("hit 7") != std::string::npos, "analyzer shows hp and the last hit");
+    expect(hud.find("HP 40") != std::string::npos && hud.find("hit 7") != std::string::npos, "analyzer shows the lock-on hp and the last hit");
+    expect(kFireButton == 0x8000 && kJumpButton == 0x4000, "fire is B on the held word");
+    expect(lock_on_slot(3) == 3 && lock_on_slot(0x0104) == 4 && lock_on_slot(0) == -1, "lock-on id picks an enemy slot");
+    EnemySpot spots[3];
+    spots[0] = {0, 0, true};
+    spots[1] = {100, 0, true};
+    spots[2] = {10, 0, true};
+    int ox = 0;
+    int oz = 0;
+    expect(nearest_other_enemy(spots, 3, 0, 0, 0, &ox, &oz) == 2 && ox == 10, "arc chain picks the nearest other enemy");
+    DropNudge nudge;
+    nudge.drop_x = 0;
+    nudge.drop_z = 0;
+    nudge.player_x = 100;
+    nudge.player_z = -3;
+    DropNudgeOut pulled = nudge_drop(nudge);
+    expect(pulled.x == 8 && pulled.z == -3, "magnet steps a drop toward the player");
 
     addon_reset();
     expect(resonance_zoom_q8(256) == 256, "projection stays put without resonance");

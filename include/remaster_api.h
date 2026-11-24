@@ -18,6 +18,8 @@ void remaster_text_pointer(uint8_t* rdram, recomp_context* ctx);
 void remaster_note_player(uint8_t* rdram, recomp_context* ctx);
 void remaster_note_player_ctx(uint8_t* rdram, recomp_context* ctx);
 void remaster_scale_damage(uint8_t* rdram, recomp_context* ctx);
+void remaster_enemy_pool(uint8_t* rdram, recomp_context* ctx);
+void remaster_retarget_player(uint8_t* rdram, recomp_context* ctx);
 void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx);
 void remaster_shot_spawn(uint8_t* rdram, recomp_context* ctx);
 void remaster_shot_hit(uint8_t* rdram, recomp_context* ctx);

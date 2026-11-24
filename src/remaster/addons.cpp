@@ -85,6 +85,7 @@ struct State {
     int last_z = 0;
     int seen_zenny = -1;
     int freeze_ticks = 0;
+    bool decoy_place = false;
 };
 
 State g;
@@ -459,6 +460,7 @@ AddonEdit addon_command(AddonVerb verb, AddonId id, const AddonView& world) {
         }
         if (id == AddonId::Decoy) {
             g.decoy_ticks = 180;
+            g.decoy_place = true;
             edit.note = "Decoy beacon is soaking hits.";
             return edit;
         }
@@ -875,10 +877,82 @@ void addon_note_enemy_hp(int hp) {
 }
 
 void addon_note_enemy_hit(int hp, int damage) {
-    addon_note_enemy_hp(hp);
+    (void)hp;
     if (damage > 0) {
         g.last_damage = damage;
     }
+}
+
+void addon_set_lock_hp(int hp) {
+    g.enemy_hp = hp;
+}
+
+void addon_arm_decoy_place() {
+    g.decoy_place = true;
+}
+
+bool addon_take_decoy_place() {
+    const bool place = g.decoy_place;
+    g.decoy_place = false;
+    return place;
+}
+
+bool addon_retarget_active() {
+    return g.decoy_ticks > 0;
+}
+
+int nearest_other_enemy(const EnemySpot* spots, int count, int from_x, int from_z, int exclude, int* out_x, int* out_z) {
+    int best = -1;
+    int64_t best_d = 0;
+    for (int i = 0; i < count; ++i) {
+        if (spots == nullptr || !spots[i].live || i == exclude) {
+            continue;
+        }
+        const int64_t dx = static_cast<int64_t>(spots[i].x) - from_x;
+        const int64_t dz = static_cast<int64_t>(spots[i].z) - from_z;
+        const int64_t dist = dx * dx + dz * dz;
+        if (best < 0 || dist < best_d) {
+            best = i;
+            best_d = dist;
+            if (out_x != nullptr) {
+                *out_x = spots[i].x;
+            }
+            if (out_z != nullptr) {
+                *out_z = spots[i].z;
+            }
+        }
+    }
+    return best;
+}
+
+DropNudgeOut nudge_drop(const DropNudge& in) {
+    auto step = [](int from, int to) {
+        int delta = to - from;
+        if (delta > 8) {
+            delta = 8;
+        }
+        if (delta < -8) {
+            delta = -8;
+        }
+        return from + delta;
+    };
+    DropNudgeOut out;
+    out.x = step(in.drop_x, in.player_x);
+    out.z = step(in.drop_z, in.player_z);
+    return out;
+}
+
+int lock_on_slot(uint32_t id) {
+    if (id == 0 || id == 0xFFFFFFFFu) {
+        return -1;
+    }
+    if (id < 18u) {
+        return static_cast<int>(id);
+    }
+    if ((id & 0xFFu) < 18u) {
+        return static_cast<int>(id & 0xFFu);
+    }
+    return -1;
 }
 
 std::string addon_hud_line() {
@@ -890,7 +964,7 @@ std::string addon_hud_line() {
         if (!out.str().empty()) {
             out << "  ";
         }
-        out << "Analyzer HP ";
+        out << "Lock HP ";
         if (g.enemy_hp < 0) {
             out << "--";
         } else {
