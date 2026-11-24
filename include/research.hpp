@@ -13,6 +13,8 @@ void on_vi();
 bool script_active();
 void apply_input(uint16_t* buttons, float* x, float* y);
 bool wants_autostart();
+void install_quit_signals();
+bool quit_requested();
 
 } // namespace mm64r
 

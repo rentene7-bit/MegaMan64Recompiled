@@ -22,8 +22,11 @@
 #include <Windows.h>
 #endif
 
+#include "ultramodern/ultramodern.hpp"
+
 #include <algorithm>
 #include <atomic>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -479,7 +482,26 @@ bool wants_autostart() {
     return std::getenv("MM64R_AUTOSTART") != nullptr || g_script.autostart();
 }
 
+std::atomic<int> g_quit_requested{0};
+
+extern "C" void mm64r_on_quit_signal(int) {
+    g_quit_requested.store(1);
+}
+
+void install_quit_signals() {
+    std::signal(SIGTERM, mm64r_on_quit_signal);
+    std::signal(SIGINT, mm64r_on_quit_signal);
+}
+
+bool quit_requested() {
+    return g_quit_requested.load() != 0;
+}
+
 void on_vi() {
+    if (quit_requested()) {
+        ultramodern::quit();
+        return;
+    }
     ensure_loaded();
     g_frame++;
     if (!g_script.active()) {
