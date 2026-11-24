@@ -256,8 +256,10 @@ int main() {
     reset();
     enter_sunken();
     expect(on_hurt(1, true, 40) == 16, "a bare underwater hit is capped");
+    expect(sunken_hp_after(80, 48) == 64, "a 32 point bypass is pulled back to the cap");
     equip_water_gear();
     expect(on_hurt(1, true, 40) == 8, "water gear softens the hit further");
+    expect(kEnemyLiveMask == 0x801D8EB4u, "the live mask is the sign-extended symbol");
 
     reset();
     expect(designated_mimic_chest() == 0x41, "flag 0x441 is the mimic");
@@ -291,10 +293,12 @@ int main() {
     expect(moves[0].slot == 0 && moves[0].x == 10 && moves[1].slot == 2 && moves[1].z == 60, "slots keep the point they were given");
     on_world(0x1A, 4, 0);
     expect(mirror_point_count() == 4, "the gate has four remix positions");
-    expect(take_mirror_plan(live, moves, 4) == 2, "live enemies take the Main Gate positions");
-    expect(moves[0].slot == 0 && moves[0].x == static_cast<int>(0x17000000u), "room 2 is the first position");
-    expect(moves[0].y == static_cast<int>(0xFF690000u) && moves[0].z == static_cast<int>(0xEE800000u), "room 2 keeps the 16.16 triple");
-    expect(moves[1].slot == 2 && moves[1].x == static_cast<int>(0x00800000u), "the next live enemy takes room 3");
+    expect(take_mirror_plan(live, moves, 4) == 1, "only the current room's spot is applied");
+    expect(moves[0].slot == 0 && moves[0].x == static_cast<int>(0xF7000000u), "room 4 keeps its X");
+    expect(moves[0].y == static_cast<int>(0xFF3F0000u), "room 4 Y is the warp frame");
+    expect(take_mirror_plan(live, moves, 4) == 0, "the same room is not applied twice");
+    on_world(0x1B, 0, 0);
+    expect(take_mirror_plan(live, moves, 4) == 0, "leaving the gate clears a pending remix");
 
     reset();
     note_deep_gate_floor(10);
@@ -313,7 +317,7 @@ int main() {
 
     reset();
     const int shore_x = static_cast<int>(0x24000000u);
-    const int shore_y = static_cast<int>(0xFF690000u);
+    const int shore_y = static_cast<int>(0xFFFF0000u);
     const int shore_z = static_cast<int>(0xF4000000u);
     expect(player_at_shore(0x0B, 3, shore_x, shore_y, shore_z), "the grass bank is the fishing spot");
     expect(!player_at_shore(0x0B, 2, shore_x, shore_y, shore_z), "the cliff room is not the shore");

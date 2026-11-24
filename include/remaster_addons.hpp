@@ -105,6 +105,8 @@ void note_area(int area, int entrance);
 int area();
 void on_world(int area_id, int entrance, int play_frames);
 int on_hurt(int victim_key, bool victim_is_player, int damage);
+/* Clamp a player HP drop while the sunken rooms are active. */
+int sunken_hp_after(int before, int after);
 /* Tags the actor already in the fight. Returns the HP to write at +0x6E, or -1. */
 int claim_actor(int victim_key);
 void note_deep_gate_floor(int floor);
@@ -245,7 +247,9 @@ void note_mimic_alive(bool alive);
 constexpr uint32_t kEnemyPool = 0x801FFBE0u;
 constexpr uint32_t kEnemyStride = 0x3C8u;
 constexpr int kEnemySlots = 18;
-constexpr uint32_t kEnemyLiveMask = 0x801E8EB4u;
+/* Sign-extended lui 0x801E + addiu 0x8EB4. The unsigned sum 0x801E8EB4
+ * is not a symbol and read 0 in play. D_801D8EB4 is the 4-byte word. */
+constexpr uint32_t kEnemyLiveMask = 0x801D8EB4u;
 constexpr int kActorPosX = 0x1C;
 constexpr int kActorPosY = 0x20;
 constexpr int kActorPosZ = 0x24;
@@ -275,6 +279,10 @@ bool custodian_room(int area, int entrance, const BossRoom* rooms, int count);
 int buff_existing_boss(int hp, int floor);
 bool custodian_buff_due(int actor, int hp);
 void note_custodian_buff(int actor);
+bool custodian_ready();
+void custodian_spot(int* x, int* y, int* z, int* hp);
+bool custodian_actor_placed();
+void note_custodian_actor_placed();
 
 bool start_collapse(int prize, double seconds);
 void tick(double dt);

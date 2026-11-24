@@ -69,6 +69,9 @@ struct State {
     int mimic_slot = -1;
     bool mimic_defeated = false;
     bool mirror_dirty = false;
+    int mirror_applied = 0;
+    bool custodian_here = false;
+    bool custodian_actor_set = false;
     bool casting = false;
     double cast_time = 0;
     int cast_serial = 1;
@@ -679,10 +682,9 @@ void note_mimic_alive(bool alive) {
     g.mimic_slot = -1;
 }
 
-/* 0x0B room 3. Warp (9216, -1, -3072) yaw 0, shallow water at a grass bank.
- * 16.16 of the stable stand. Not the sunken area 0x1D. */
+/* 0x0B room 3. Actor Y is the warp frame (-1), not the integer floor (-151). */
 const ShorePoint kShores[] = {
-    {0x0B, static_cast<int>(0x24000000u), static_cast<int>(0xFF690000u), static_cast<int>(0xF4000000u), static_cast<int>(0x01000000u), 3},
+    {0x0B, static_cast<int>(0x24000000u), static_cast<int>(0xFFFF0000u), static_cast<int>(0xF4000000u), static_cast<int>(0x01000000u), 3},
 };
 
 int shore_count() { return static_cast<int>(sizeof(kShores) / sizeof(kShores[0])); }
@@ -760,11 +762,12 @@ struct MirrorSlot {
     int z;
     bool enabled;
 };
+/* Y is the actor frame: integer floor + 150, then << 16. X and Z are the integer << 16. */
 const MirrorSlot kMirrorSlots[] = {
-    {2, static_cast<int>(0x17000000u), static_cast<int>(0xFF690000u), static_cast<int>(0xEE800000u), true},
-    {3, static_cast<int>(0x00800000u), static_cast<int>(0xFF690000u), static_cast<int>(0xB5000000u), true},
-    {4, static_cast<int>(0xF7000000u), static_cast<int>(0xFEA90000u), static_cast<int>(0xC7000000u), true},
-    {6, static_cast<int>(0xF7000000u), static_cast<int>(0xFD290000u), static_cast<int>(0xF3000000u), true},
+    {2, static_cast<int>(0x17000000u), static_cast<int>(0xFFFF0000u), static_cast<int>(0xEE800000u), true},
+    {3, static_cast<int>(0x00800000u), static_cast<int>(0xFFFF0000u), static_cast<int>(0xB5000000u), true},
+    {4, static_cast<int>(0xF7000000u), static_cast<int>(0xFF3F0000u), static_cast<int>(0xC7000000u), true},
+    {6, static_cast<int>(0xF7000000u), static_cast<int>(0xFDBF0000u), static_cast<int>(0xF3000000u), true},
 };
 
 int mirror_point_count() {
@@ -776,19 +779,22 @@ int mirror_point_count() {
 }
 
 int take_mirror_plan(uint32_t live_mask, EnemyMove* out, int cap) {
+    if (g.area != 0x1A) {
+        g.mirror_dirty = false;
+        g.mirror_applied = 0;
+        return 0;
+    }
     if (!g.mirror_dirty) return 0;
+    const int room_bit = 1 << (g.entrance & 31);
+    if ((g.mirror_applied & room_bit) != 0) return 0;
     RemixPoint points[4];
     int count = 0;
     for (const MirrorSlot& slot : kMirrorSlots) {
-        if (!slot.enabled || count >= 4) continue;
+        if (!slot.enabled || slot.room != g.entrance || count >= 4) continue;
         points[count++] = RemixPoint{slot.x, slot.y, slot.z};
     }
-    if (count == 0) {
-        g.mirror_dirty = false;
-        return 0;
-    }
-    if (first_live_enemy(live_mask) < 0) return 0;
-    g.mirror_dirty = false;
+    if (count == 0 || first_live_enemy(live_mask) < 0) return 0;
+    g.mirror_applied |= room_bit;
     return plan_enemy_moves(live_mask, points, count, out, cap);
 }
 
@@ -825,16 +831,30 @@ int buff_existing_boss(int hp, int floor) {
 }
 
 bool custodian_buff_due(int actor, int hp) {
-    if (actor == 0 || hp <= 0) return false;
-    if (g.custodian_actor == actor && g.custodian_floor == g.deep_floor) return false;
-    if (!custodian_for_floor(g.deep_floor).active) return false;
-    return custodian_room(g.area, g.entrance, kCustodianRooms, static_cast<int>(sizeof(kCustodianRooms) / sizeof(kCustodianRooms[0])));
+    if (actor == 0 || hp <= 0 || !g.custodian_here) return false;
+    if (g.custodian_actor == actor) return false;
+    return true;
 }
 
 void note_custodian_buff(int actor) {
     g.custodian_actor = actor;
     g.custodian_floor = g.deep_floor;
 }
+
+bool custodian_ready() { return g.custodian_here; }
+
+void custodian_spot(int* x, int* y, int* z, int* hp) {
+    /* Stable integer stand (33, -151, 0). Actor Y uses the warp frame. */
+    if (x) *x = static_cast<int>(0x00210000u);
+    if (y) *y = static_cast<int>(0xFFFF0000u);
+    if (z) *z = 0;
+    int floor = g.deep_floor;
+    if (floor < 10 || (floor % 10) != 0) floor = 10;
+    if (hp) *hp = custodian_for_floor(floor).hp;
+}
+
+bool custodian_actor_placed() { return g.custodian_actor_set; }
+void note_custodian_actor_placed() { g.custodian_actor_set = true; }
 
 bool start_collapse(int prize, double seconds) {
     if (g.collapse || prize <= 0 || seconds <= 0) return false;
@@ -872,7 +892,14 @@ bool collapse_banked() { return g.collapse_banked; }
 
 void on_world(int area_id, int entrance, int play_frames) {
     const bool changed = area_id != g.area;
+    const bool room_changed = entrance != g.entrance;
+    if (changed && g.area == 0x1A) {
+        g.mirror_dirty = false;
+        g.mirror_applied = 0;
+    }
     note_area(area_id, entrance);
+    g.custodian_here = area_id == 0x17 && entrance == 0;
+    if (!g.custodian_here) g.custodian_actor_set = false;
     if (changed && area_id != 0x1A) g.tagged = 0;
     if (changed && g.rival_on) {
         const RaceResult result = finish_race(g.rival_time, 45.0, 1000);
@@ -892,7 +919,7 @@ void on_world(int area_id, int entrance, int play_frames) {
         if (g.tools.sonar) add_flutter_part(2);
         if (g.tools.fusion) add_flutter_part(3);
     }
-    if (changed && area_id == 0x1A) g.mirror_dirty = true;
+    if (area_id == 0x1A && (changed || room_changed)) g.mirror_dirty = true;
     if (area_id == 0x1A && !g.mirror_on) {
         g.mirror_on = true;
         const auto remix = mirror_remix(area_id);
@@ -929,15 +956,22 @@ int claim_actor(int victim_key) {
     return -1;
 }
 
+int sunken_allowed_drop(int dropped) {
+    if (!g.sunken || dropped <= 0) return dropped;
+    const int kept = g.water_gear ? dropped / 4 : dropped / 2;
+    const int cap = g.water_gear ? 8 : 16;
+    return std::min(cap, std::max(1, kept));
+}
+
+int sunken_hp_after(int before, int after) {
+    if (!g.sunken || after >= before) return after;
+    return before - sunken_allowed_drop(before - after);
+}
+
 int on_hurt(int victim_key, bool victim_is_player, int damage) {
     if (damage <= 0) return damage;
     if (victim_is_player) {
-        if (!g.sunken) return damage;
-        /* The 0x1D enemy is outside the live-enemy mask. Soften the hit so one
-         * contact is not a game over. Coolant, the water gear, softens it more. */
-        const int kept = g.water_gear ? damage / 4 : damage / 2;
-        const int cap = g.water_gear ? 8 : 16;
-        return std::min(cap, std::max(1, kept));
+        return sunken_allowed_drop(damage);
     }
     if (g.spar_index >= 0) {
         strike_sparring(damage);

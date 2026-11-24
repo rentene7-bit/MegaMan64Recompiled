@@ -719,6 +719,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(remaster_scale_damage);
     REGISTER_FUNC(remaster_note_boss_bar);
     REGISTER_FUNC(remaster_addons_on_player);
+    REGISTER_FUNC(remaster_sunken_settle);
     REGISTER_FUNC(remaster_scale_move);
     REGISTER_FUNC(remaster_chest_reward);
     REGISTER_FUNC(recomp_get_camera_inputs);
@@ -832,6 +833,9 @@ int main(int argc, char** argv) {
         .message_queue_control = {},
     };
 
+#ifdef MM64R_RESEARCH
+    mm64r::install_quit_signals();
+#endif
     recomp::start(cfg);
 
     NFD_Quit();

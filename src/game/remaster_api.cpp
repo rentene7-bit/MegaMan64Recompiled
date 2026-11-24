@@ -12,6 +12,11 @@
 namespace {
 
 std::atomic<int32_t> g_player_guest{0};
+int g_sunken_hp_before = -1;
+
+int64_t guest_at(uint32_t address) {
+    return static_cast<int64_t>(static_cast<int32_t>(address));
+}
 
 bool guest_ram(int32_t address) {
     const uint32_t value = static_cast<uint32_t>(address);
@@ -62,20 +67,34 @@ namespace {
 bool addon_flag_set(uint8_t* rdram, int id) {
     const uint32_t addr = remaster::addons::kFlagGuest + static_cast<uint32_t>(id >> 3);
     const uint8_t mask = static_cast<uint8_t>(0x80u >> (id & 7));
-    return (MEM_BU(0, static_cast<int64_t>(addr)) & mask) != 0;
+    return (MEM_BU(0, guest_at(addr)) & mask) != 0;
 }
 
 void place_enemy(uint8_t* rdram, int slot, int x, int y, int z) {
     if (slot < 0 || slot >= remaster::addons::kEnemySlots) return;
     const uint32_t actor = remaster::addons::kEnemyPool + static_cast<uint32_t>(slot) * remaster::addons::kEnemyStride;
-    const int32_t guest = static_cast<int32_t>(actor);
+    const int64_t guest = guest_at(actor);
     MEM_W(remaster::addons::kActorPosX, guest) = x;
     MEM_W(remaster::addons::kActorPosY, guest) = y;
     MEM_W(remaster::addons::kActorPosZ, guest) = z;
 }
 
+int64_t enemy_guest(int slot) {
+    return guest_at(remaster::addons::kEnemyPool + static_cast<uint32_t>(slot) * remaster::addons::kEnemyStride);
+}
+
 uint32_t enemy_mask(uint8_t* rdram) {
-    return static_cast<uint32_t>(MEM_W(0, static_cast<int64_t>(remaster::addons::kEnemyLiveMask)));
+    const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::addons::kEnemyLiveMask)));
+    if (mask != 0) return mask;
+    /* Spawn func_8004EEAC (0x9C) and despawn func_8004F418 (0x70) keep this
+     * word. When it is 0, a slot with a header and positive HP is still live. */
+    uint32_t built = 0;
+    for (int slot = 0; slot < remaster::addons::kEnemySlots; ++slot) {
+        const int64_t actor = enemy_guest(slot);
+        if (MEM_W(0, actor) == 0 || MEM_H(0x6E, actor) <= 0) continue;
+        built |= 0x80000000u >> slot;
+    }
+    return built;
 }
 
 void addon_flag_raise(uint8_t* rdram, int id) {
@@ -84,7 +103,7 @@ void addon_flag_raise(uint8_t* rdram, int id) {
     }
     const uint32_t addr = remaster::addons::kFlagGuest + static_cast<uint32_t>(id >> 3);
     const uint8_t mask = static_cast<uint8_t>(0x80u >> (id & 7));
-    const int64_t guest = static_cast<int64_t>(addr);
+    const int64_t guest = guest_at(addr);
     MEM_BU(0, guest) = static_cast<uint8_t>(MEM_BU(0, guest) | mask);
 }
 
@@ -92,10 +111,10 @@ void addon_flag_raise(uint8_t* rdram, int id) {
 
 extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     (void)ctx;
-    const int area = MEM_BU(0, static_cast<int64_t>(0x801BC438));
-    const int entrance = MEM_BU(0, static_cast<int64_t>(0x801BC439));
-    const int zenny = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(0x801BC406)));
-    const int frames = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(0x801BC3F6)));
+    const int area = MEM_BU(0, guest_at(0x801BC438));
+    const int entrance = MEM_BU(0, guest_at(0x801BC439));
+    const int zenny = static_cast<uint16_t>(MEM_H(0, guest_at(0x801BC406)));
+    const int frames = static_cast<uint16_t>(MEM_H(0, guest_at(0x801BC3F6)));
     remaster::addons::note_zenny(zenny);
 
     remaster::addons::NeighborView bits;
@@ -114,15 +133,24 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     remaster::addons::note_neighbor(bits);
     remaster::addons::note_underwater(area, entrance, bits.coolant);
     remaster::addons::on_world(area, entrance, frames);
+    const int32_t player_now = static_cast<int32_t>(remaster::addons::kPlayerGuest);
+    const int hp_now = MEM_H(0x6E, player_now);
+    if (g_sunken_hp_before >= 0) {
+        const int clamped = remaster::addons::sunken_hp_after(g_sunken_hp_before, hp_now);
+        if (clamped != hp_now) {
+            MEM_H(0x6E, player_now) = static_cast<int16_t>(clamped);
+        }
+    }
+    g_sunken_hp_before = MEM_H(0x6E, player_now);
 
     const int32_t player = static_cast<int32_t>(remaster::addons::kPlayerGuest);
     const int px = MEM_W(remaster::addons::kActorPosX, player);
     const int py = MEM_W(remaster::addons::kActorPosY, player);
     const int pz = MEM_W(remaster::addons::kActorPosZ, player);
     /* Just-pressed, held, and released action words. Not player+0x7C. */
-    const auto pressed = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(remaster::addons::kPlayerPressedGuest)));
-    const auto held = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(remaster::addons::kPlayerHeldGuest)));
-    const auto released = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(remaster::addons::kPlayerReleasedGuest)));
+    const auto pressed = static_cast<uint16_t>(MEM_H(0, guest_at(remaster::addons::kPlayerPressedGuest)));
+    const auto held = static_cast<uint16_t>(MEM_H(0, guest_at(remaster::addons::kPlayerHeldGuest)));
+    const auto released = static_cast<uint16_t>(MEM_H(0, guest_at(remaster::addons::kPlayerReleasedGuest)));
     remaster::addons::update_cast(remaster::addons::player_at_shore(area, entrance, px, py, pz), pressed, held, released, 1.0 / 60.0);
 
     remaster::addons::EnemyMove moves[remaster::addons::kEnemySlots];
@@ -140,9 +168,22 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     } else if (remaster::addons::mimic_slot() >= 0) {
         remaster::addons::note_mimic_alive(remaster::addons::enemy_live(live, remaster::addons::mimic_slot()));
     }
+    if (remaster::addons::custodian_ready() && !remaster::addons::custodian_actor_placed()) {
+        const int slot = remaster::addons::first_live_enemy(live);
+        if (slot >= 0) {
+            int spot_x = 0;
+            int spot_y = 0;
+            int spot_z = 0;
+            int spot_hp = 0;
+            remaster::addons::custodian_spot(&spot_x, &spot_y, &spot_z, &spot_hp);
+            place_enemy(rdram, slot, spot_x, spot_y, spot_z);
+            MEM_H(0x6E, enemy_guest(slot)) = static_cast<int16_t>(spot_hp);
+            remaster::addons::note_custodian_actor_placed();
+        }
+    }
     const int settled = remaster::addons::settle_zenny(zenny);
     if (settled != zenny) {
-        MEM_H(0, static_cast<int64_t>(0x801BC406)) = static_cast<int16_t>(static_cast<uint16_t>(settled));
+        MEM_H(0, guest_at(0x801BC406)) = static_cast<int16_t>(static_cast<uint16_t>(settled));
     }
 
     for (int id : remaster::addons::flag_writes()) {
@@ -152,9 +193,9 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     const remaster::addons::RgbTint tint = remaster::addons::scene_tint();
     if (tint.active) {
         /* GfxContext at 0x802047F0, bgPrimRed/Green/Blue at +0xA4. */
-        MEM_BU(0, static_cast<int64_t>(0x80204894)) = static_cast<uint8_t>(tint.r);
-        MEM_BU(0, static_cast<int64_t>(0x80204895)) = static_cast<uint8_t>(tint.g);
-        MEM_BU(0, static_cast<int64_t>(0x80204896)) = static_cast<uint8_t>(tint.b);
+        MEM_BU(0, guest_at(0x80204894)) = static_cast<uint8_t>(tint.r);
+        MEM_BU(0, guest_at(0x80204895)) = static_cast<uint8_t>(tint.g);
+        MEM_BU(0, guest_at(0x80204896)) = static_cast<uint8_t>(tint.b);
     }
 }
 
@@ -169,7 +210,12 @@ extern "C" void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx) {
     }
     int hp = MEM_H(0x6E, actor);
     if (remaster::addons::custodian_buff_due(actor, hp)) {
-        hp = remaster::addons::buff_existing_boss(hp, remaster::addons::deep_gate_floor());
+        int spot_x = 0;
+        int spot_y = 0;
+        int spot_z = 0;
+        int spot_hp = hp;
+        remaster::addons::custodian_spot(&spot_x, &spot_y, &spot_z, &spot_hp);
+        hp = spot_hp;
         MEM_H(0x6E, actor) = static_cast<int16_t>(hp);
         remaster::addons::note_custodian_buff(actor);
     } else {
@@ -186,9 +232,22 @@ extern "C" void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx) {
     remaster::note_actor_hp(id, hp);
 }
 
+extern "C" void remaster_sunken_settle(uint8_t* rdram, recomp_context* ctx) {
+    (void)ctx;
+    const int32_t player = static_cast<int32_t>(remaster::addons::kPlayerGuest);
+    const int now = MEM_H(0x6E, player);
+    if (g_sunken_hp_before >= 0) {
+        const int clamped = remaster::addons::sunken_hp_after(g_sunken_hp_before, now);
+        if (clamped != now) {
+            MEM_H(0x6E, player) = static_cast<int16_t>(clamped);
+        }
+    }
+    g_sunken_hp_before = MEM_H(0x6E, player);
+}
+
 extern "C" void remaster_scale_move(uint8_t* rdram, recomp_context* ctx) {
-    const int area = MEM_BU(0, static_cast<int64_t>(0x801BC438));
-    const int room = MEM_BU(0, static_cast<int64_t>(0x801BC439));
+    const int area = MEM_BU(0, guest_at(0x801BC438));
+    const int room = MEM_BU(0, guest_at(0x801BC439));
     const bool gear = addon_flag_set(rdram, remaster::addons::kNeighborCoolant) || remaster::addons::tool_hooks().coolant;
     ctx->r5 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, room, gear, static_cast<int32_t>(ctx->r5))));
     ctx->r6 = static_cast<gpr>(static_cast<int64_t>(remaster::addons::scale_axis(area, room, gear, static_cast<int32_t>(ctx->r6))));
@@ -202,8 +261,8 @@ extern "C" void remaster_chest_reward(uint8_t* rdram, recomp_context* ctx) {
     for (int32_t ptr : regs) {
         if (!guest_ram(ptr)) continue;
         const int id = static_cast<int>(static_cast<int8_t>(MEM_BU(0xC, ptr)));
-        const int area = MEM_BU(0, static_cast<int64_t>(0x801BC438));
-        const int room = MEM_BU(0, static_cast<int64_t>(0x801BC439));
+        const int area = MEM_BU(0, guest_at(0x801BC438));
+        const int room = MEM_BU(0, guest_at(0x801BC439));
         const remaster::addons::ChestResult result = remaster::addons::consider_chest(id, area, room);
         if (!result.fight) continue;
         chest = ptr;
@@ -281,7 +340,7 @@ extern "C" void remaster_text_pointer(uint8_t* rdram, recomp_context* ctx) {
         if (guest < 0x80000000u || guest >= 0x80800000u) {
             break;
         }
-        upcoming[i] = MEM_BU(0, static_cast<int64_t>(at));
+        upcoming[i] = MEM_BU(0, static_cast<int64_t>(static_cast<int32_t>(at)));
         count++;
     }
     ctx->r2 = static_cast<gpr>(static_cast<int64_t>(pointer + remaster::dialogue_extra_advance(upcoming, count)));
