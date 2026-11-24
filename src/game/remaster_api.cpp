@@ -14,7 +14,6 @@ namespace {
 std::atomic<int32_t> g_player_guest{0};
 int g_sunken_hp_before = -1;
 int g_custodian_slot = -1;
-int g_custodian_warm = 0;
 
 int64_t guest_at(uint32_t address) {
     return static_cast<int64_t>(static_cast<int32_t>(address));
@@ -99,11 +98,24 @@ uint32_t enemy_mask(uint8_t* rdram) {
     return built;
 }
 
-void set_enemy_live(uint8_t* rdram, int slot) {
+void set_enemy_live(uint8_t* rdram, int slot, bool on) {
     const uint32_t bit = 0x80000000u >> slot;
     const int64_t at = guest_at(remaster::addons::kEnemyLiveMask);
-    const uint32_t mask = static_cast<uint32_t>(MEM_W(0, at)) | bit;
+    uint32_t mask = static_cast<uint32_t>(MEM_W(0, at));
+    mask = on ? (mask | bit) : (mask & ~bit);
     MEM_W(0, at) = static_cast<int32_t>(mask);
+}
+
+void stamp_fighter(uint8_t* rdram, int slot) {
+    (void)rdram;
+    const int64_t actor = enemy_guest(slot);
+    const int kind = MEM_BU(0, actor);
+    /* Class 0 is the blank allocator result (header 00200000). Holding that
+     * slot live stops the player update from applying the stick. */
+    if (kind == 0) {
+        MEM_BU(0, actor) = static_cast<uint8_t>(remaster::addons::kSlotClassFighter);
+    }
+    if (MEM_BU(1, actor) == 0) MEM_BU(1, actor) = 0x20;
 }
 
 int slot_from_actor(uint32_t actor) {
@@ -128,8 +140,9 @@ int claim_free_slot(uint8_t* rdram) {
     for (int off = 0; off < remaster::addons::kEnemyStride; off += 4) {
         MEM_W(off, actor) = 0;
     }
-    MEM_B(1, actor) = static_cast<int8_t>(slot);
-    set_enemy_live(rdram, slot);
+    MEM_BU(0, actor) = static_cast<uint8_t>(remaster::addons::kSlotClassFighter);
+    MEM_BU(1, actor) = 0x20;
+    set_enemy_live(rdram, slot, true);
     return slot;
 }
 
@@ -151,12 +164,30 @@ int spawn_custodian_slot(uint8_t* rdram, recomp_context* ctx) {
         if (slot < 0 && returned < static_cast<uint32_t>(remaster::addons::kEnemySlots)) {
             slot = static_cast<int>(returned);
         }
+        if (slot >= 0 && MEM_BU(0, enemy_guest(slot)) == remaster::addons::kSlotClassChest) {
+            slot = -1;
+        }
         if (slot >= 0) {
-            set_enemy_live(rdram, slot);
+            set_enemy_live(rdram, slot, true);
+            stamp_fighter(rdram, slot);
             return slot;
         }
     }
     return claim_free_slot(rdram);
+}
+
+uint32_t fighters_now(uint8_t* rdram) {
+    const uint32_t raw = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::addons::kEnemyLiveMask)));
+    int hp[remaster::addons::kEnemySlots];
+    int type[remaster::addons::kEnemySlots];
+    for (int slot = 0; slot < remaster::addons::kEnemySlots; slot++) {
+        hp[slot] = 0;
+        type[slot] = 0;
+        if (!remaster::addons::enemy_live(raw, slot)) continue;
+        hp[slot] = MEM_H(0x6E, enemy_guest(slot));
+        type[slot] = MEM_BU(0, enemy_guest(slot));
+    }
+    return remaster::addons::fighter_slots(raw, hp, type, remaster::addons::kEnemySlots);
 }
 
 void addon_flag_raise(uint8_t* rdram, int id) {
@@ -215,48 +246,62 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     remaster::addons::update_cast(remaster::addons::player_at_shore(area, entrance, px, py, pz), pressed, held, released, 1.0 / 60.0);
 
     remaster::addons::EnemyMove moves[remaster::addons::kEnemySlots];
-    const uint32_t live = enemy_mask(rdram);
-    const uint32_t raw_live = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::addons::kEnemyLiveMask)));
-    int slot_hp[remaster::addons::kEnemySlots];
-    for (int slot = 0; slot < remaster::addons::kEnemySlots; slot++) {
-        slot_hp[slot] = 0;
-        if (!remaster::addons::enemy_live(raw_live, slot)) continue;
-        slot_hp[slot] = MEM_H(0x6E, enemy_guest(slot));
-    }
-    const uint32_t mirror_live = remaster::addons::mirror_candidates(raw_live, slot_hp, remaster::addons::kEnemySlots);
-    const int move_count = remaster::addons::take_mirror_plan(mirror_live, moves, remaster::addons::kEnemySlots);
+    const uint32_t fought = fighters_now(rdram);
+    const int move_count = remaster::addons::take_mirror_plan(fought, moves, remaster::addons::kEnemySlots);
     for (int i = 0; i < move_count; i++) {
         place_enemy(rdram, moves[i].slot, moves[i].x, moves[i].y, moves[i].z);
     }
     if (remaster::addons::mimic_pending() && !remaster::addons::underwater()) {
-        const int slot = remaster::addons::first_live_enemy(live);
+        int slot = remaster::addons::first_live_enemy(fought);
+        if (slot < 0) slot = spawn_custodian_slot(rdram, ctx);
         if (slot >= 0) {
+            stamp_fighter(rdram, slot);
             place_enemy(rdram, slot, remaster::addons::mimic_pending_x(), remaster::addons::mimic_pending_y(), remaster::addons::mimic_pending_z());
             remaster::addons::note_mimic_placed(slot);
         }
     } else if (remaster::addons::mimic_slot() >= 0) {
-        remaster::addons::note_mimic_alive(remaster::addons::enemy_live(live, remaster::addons::mimic_slot()));
+        remaster::addons::note_mimic_alive(remaster::addons::enemy_live(fought, remaster::addons::mimic_slot()));
     }
-    if (!remaster::addons::custodian_ready()) {
-        g_custodian_slot = -1;
-        g_custodian_warm = 0;
-    } else {
-        if (g_custodian_slot < 0) {
-            g_custodian_slot = spawn_custodian_slot(rdram, ctx);
-            if (g_custodian_slot >= 0) remaster::addons::note_custodian_actor_placed();
+    if (!remaster::addons::custodian_ready() || remaster::addons::custodian_beaten()) {
+        if (!remaster::addons::custodian_ready()) {
+            g_custodian_slot = -1;
         }
+    } else if (g_custodian_slot < 0) {
+        g_custodian_slot = spawn_custodian_slot(rdram, ctx);
         if (g_custodian_slot >= 0) {
+            remaster::addons::note_custodian_actor_placed();
             int spot_x = 0;
             int spot_y = 0;
             int spot_z = 0;
             int spot_hp = 0;
             remaster::addons::custodian_spot(&spot_x, &spot_y, &spot_z, &spot_hp);
+            stamp_fighter(rdram, g_custodian_slot);
             place_enemy(rdram, g_custodian_slot, spot_x, spot_y, spot_z);
-            set_enemy_live(rdram, g_custodian_slot);
-            if (g_custodian_warm < 60) {
-                MEM_H(0x6E, enemy_guest(g_custodian_slot)) = static_cast<int16_t>(spot_hp);
-                g_custodian_warm++;
-            }
+            MEM_H(0x6E, enemy_guest(g_custodian_slot)) = static_cast<int16_t>(spot_hp);
+        }
+    } else {
+        const int64_t actor = enemy_guest(g_custodian_slot);
+        int hp = MEM_H(0x6E, actor);
+        /* Class 0 has no hitbox, so a B press in this room is the shot. */
+        if ((pressed & remaster::addons::kFireButton) != 0 && hp > 0) {
+            hp -= 8;
+            if (hp < 0) hp = 0;
+            MEM_H(0x6E, actor) = static_cast<int16_t>(hp);
+        }
+        if (hp <= 0) {
+            set_enemy_live(rdram, g_custodian_slot, false);
+            g_custodian_slot = -1;
+            remaster::addons::note_custodian_down();
+        } else {
+            int spot_x = 0;
+            int spot_y = 0;
+            int spot_z = 0;
+            int spot_hp = 0;
+            remaster::addons::custodian_spot(&spot_x, &spot_y, &spot_z, &spot_hp);
+            (void)spot_hp;
+            stamp_fighter(rdram, g_custodian_slot);
+            place_enemy(rdram, g_custodian_slot, spot_x, spot_y, spot_z);
+            set_enemy_live(rdram, g_custodian_slot, true);
         }
     }
     const int settled = remaster::addons::settle_zenny(zenny);
@@ -355,11 +400,13 @@ extern "C" void remaster_chest_reward(uint8_t* rdram, recomp_context* ctx) {
     const int x = MEM_W(remaster::addons::kActorPosX, chest);
     const int y = MEM_W(remaster::addons::kActorPosY, chest);
     const int z = MEM_W(remaster::addons::kActorPosZ, chest);
-    const int slot = remaster::addons::first_live_enemy(enemy_mask(rdram));
+    int slot = remaster::addons::first_live_enemy(fighters_now(rdram));
+    if (slot < 0) slot = spawn_custodian_slot(rdram, ctx);
     if (slot < 0) {
         remaster::addons::arm_mimic_at(x, y, z);
         return;
     }
+    stamp_fighter(rdram, slot);
     place_enemy(rdram, slot, x, y, z);
     remaster::addons::note_mimic_placed(slot);
 }

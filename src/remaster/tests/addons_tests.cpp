@@ -257,6 +257,7 @@ int main() {
     enter_sunken();
     expect(on_hurt(1, true, 40) == 16, "a bare underwater hit is capped");
     expect(sunken_hp_after(80, 48) == 64, "a 32 point bypass is pulled back to the cap");
+    expect(sunken_hp_after(48, 31) == 32, "a 17 point hit is clamped to 16");
     equip_water_gear();
     expect(on_hurt(1, true, 40) == 8, "water gear softens the hit further");
     expect(kEnemyLiveMask == 0x801D8EB4u, "the live mask is the sign-extended symbol");
@@ -292,10 +293,14 @@ int main() {
     expect(plan_enemy_moves(live, points, 2, moves, 4) == 2, "live enemies take remix points in order");
     expect(moves[0].slot == 0 && moves[0].x == 10 && moves[1].slot == 2 && moves[1].z == 60, "slots keep the point they were given");
     int slot_hp[18] = {};
-    slot_hp[0] = 0;
-    slot_hp[2] = 160;
-    const uint32_t fought = mirror_candidates(live, slot_hp, 18);
-    expect(fought == (0x80000000u >> 2), "a 0-HP live slot is not a mirror target");
+    int slot_type[18] = {};
+    slot_hp[0] = 160;
+    slot_type[0] = kSlotClassChest;
+    slot_hp[2] = 640;
+    slot_type[2] = kSlotClassFighter;
+    const uint32_t fought = fighter_slots(live, slot_hp, slot_type, 18);
+    expect(!fighter_class(kSlotClassChest) && fighter_class(kSlotClassFighter), "chests are not fighters");
+    expect(fought == (0x80000000u >> 2), "a chest with HP is not a mirror target");
     on_world(0x1A, 4, 0);
     expect(mirror_point_count() == 4, "the gate has four remix positions");
     expect(take_mirror_plan(fought, moves, 4) == 1, "only the current room's spot is applied");

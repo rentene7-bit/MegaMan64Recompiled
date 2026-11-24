@@ -84,19 +84,42 @@ target_include_directories(RecompiledFuncs PRIVATE
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/N64Recomp/include
 )
 
-file(GLOB FUNC_C_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
-file(GLOB FUNC_CXX_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
-
-target_sources(RecompiledFuncs PRIVATE ${FUNC_C_SOURCES} ${FUNC_CXX_SOURCES})
-
-# us.rev1.toml hooks are compiled into RecompiledFuncs. Regenerate that C
-# before compiling it, or a new hook is absent from the binary.
 if (WIN32)
     set(N64RECOMP_EXE "${CMAKE_SOURCE_DIR}/N64Recomp.exe")
 else()
     set(N64RECOMP_EXE "${CMAKE_SOURCE_DIR}/N64Recomp")
 endif()
+
+file(GLOB FUNC_C_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
+file(GLOB FUNC_CXX_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
+
+# A clean checkout has no generated C. If the recompiler is already built, run
+# it now so this configure sees the real sources. Otherwise keep a placeholder
+# so configure does not fail with "No SOURCES given to target".
+if (NOT FUNC_C_SOURCES AND NOT FUNC_CXX_SOURCES AND EXISTS "${N64RECOMP_EXE}")
+    execute_process(
+        COMMAND "${N64RECOMP_EXE}" "${CMAKE_SOURCE_DIR}/us.rev1.toml"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        RESULT_VARIABLE RECOMP_CONFIGURE_RESULT
+    )
+    file(GLOB FUNC_C_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
+    file(GLOB FUNC_CXX_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
+    if (NOT RECOMP_CONFIGURE_RESULT EQUAL 0)
+        message(STATUS "N64Recomp did not generate sources during configure (${RECOMP_CONFIGURE_RESULT})")
+    endif()
+endif()
+if (NOT FUNC_C_SOURCES AND NOT FUNC_CXX_SOURCES)
+    set(RECOMP_PLACEHOLDER "${CMAKE_BINARY_DIR}/recomp_placeholder.c")
+    file(WRITE "${RECOMP_PLACEHOLDER}" "/* N64Recomp fills RecompiledFuncs on the first build. */\n")
+    list(APPEND FUNC_C_SOURCES "${RECOMP_PLACEHOLDER}")
+endif()
+
+target_sources(RecompiledFuncs PRIVATE ${FUNC_C_SOURCES} ${FUNC_CXX_SOURCES})
+
+# us.rev1.toml hooks are compiled into RecompiledFuncs. Regenerate that C
+# before compiling it, or a new hook is absent from the binary.
 set(RECOMP_GAME_STAMP "${CMAKE_BINARY_DIR}/recomp_game.stamp")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${RECOMP_GAME_STAMP}")
 add_custom_command(
     OUTPUT "${RECOMP_GAME_STAMP}"
     COMMAND "${N64RECOMP_EXE}" "${CMAKE_SOURCE_DIR}/us.rev1.toml"

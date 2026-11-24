@@ -268,8 +268,12 @@ int mirror_point_count();
 bool enemy_live(uint32_t mask, int slot);
 int first_live_enemy(uint32_t mask);
 int plan_enemy_moves(uint32_t live_mask, const RemixPoint* points, int count, EnemyMove* out, int cap);
-/* Live bit and HP both required. A 0-HP slot can still have its bit set. */
-uint32_t mirror_candidates(uint32_t live_mask, const int* hp, int slots);
+/* Header byte 0. 0x07 is a chest or other object (07203500 / 07213500). 0 is an empty slot. */
+constexpr int kSlotClassChest = 0x07;
+constexpr int kSlotClassFighter = 0x01;
+bool fighter_class(int type);
+/* Live bit, HP above 0, and a fighter class. Chests are in this pool and are not targets. */
+uint32_t fighter_slots(uint32_t live_mask, const int* hp, const int* type, int slots);
 int take_mirror_plan(uint32_t live_mask, EnemyMove* out, int cap);
 
 struct BossRoom {
@@ -285,6 +289,8 @@ bool custodian_ready();
 void custodian_spot(int* x, int* y, int* z, int* hp);
 bool custodian_actor_placed();
 void note_custodian_actor_placed();
+void note_custodian_down();
+bool custodian_beaten();
 
 bool start_collapse(int prize, double seconds);
 void tick(double dt);

@@ -742,12 +742,17 @@ int first_live_enemy(uint32_t mask) {
     return -1;
 }
 
-uint32_t mirror_candidates(uint32_t live_mask, const int* hp, int slots) {
-    if (hp == nullptr || slots <= 0) return 0;
+bool fighter_class(int type) {
+    return type != 0 && type != kSlotClassChest;
+}
+
+uint32_t fighter_slots(uint32_t live_mask, const int* hp, const int* type, int slots) {
+    if (hp == nullptr || type == nullptr || slots <= 0) return 0;
     uint32_t out = 0;
     const int count = slots < kEnemySlots ? slots : kEnemySlots;
     for (int slot = 0; slot < count; slot++) {
         if (!enemy_live(live_mask, slot) || hp[slot] <= 0) continue;
+        if (!fighter_class(type[slot])) continue;
         out |= 0x80000000u >> slot;
     }
     return out;
@@ -868,6 +873,12 @@ void custodian_spot(int* x, int* y, int* z, int* hp) {
 
 bool custodian_actor_placed() { return g.custodian_actor_set; }
 void note_custodian_actor_placed() { g.custodian_actor_set = true; }
+void note_custodian_down() {
+    g.custodian_done = true;
+    g.custodian_actor_set = true;
+}
+
+bool custodian_beaten() { return g.custodian_done; }
 
 bool start_collapse(int prize, double seconds) {
     if (g.collapse || prize <= 0 || seconds <= 0) return false;
@@ -974,8 +985,10 @@ int claim_actor(int victim_key) {
 
 int sunken_allowed_drop(int dropped) {
     if (!g.sunken || dropped <= 0) return dropped;
-    const int kept = g.water_gear ? dropped / 4 : dropped / 2;
     const int cap = g.water_gear ? 8 : 16;
+    /* A hit one over the cap is the cap. 17 must not land when the cap is 16. */
+    if (dropped > cap && dropped <= cap + 1) return cap;
+    const int kept = g.water_gear ? dropped / 4 : dropped / 2;
     return std::min(cap, std::max(1, kept));
 }
 
