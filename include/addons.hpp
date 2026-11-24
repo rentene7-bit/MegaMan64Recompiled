@@ -118,7 +118,10 @@ constexpr int kLockButton = 0x200;
 constexpr uint32_t kEnemyPool = 0x801FFBE0u;
 constexpr int kEnemyStride = 0x3C8;
 constexpr int kEnemySlots = 18;
-constexpr uint32_t kEnemyLiveMask = 0x801E8EB4u;
+/* Spawn func_8004EEAC sets bit (31 - slot) here. 0x801E8EB4 is the same
+ * offset from the next 64K and stays 0. Despawn func_8004F418 clears the
+ * actor's first byte at once and drops the bit on a later flush. */
+constexpr uint32_t kEnemyLiveMask = 0x801D8EB4u;
 constexpr uint32_t kPickupPool = 0x801ADD70u;
 constexpr int kPickupStride = 0x58;
 constexpr int kPickupSlots = 64;
@@ -325,6 +328,8 @@ struct DropNudgeOut {
 
 DropNudgeOut nudge_drop(const DropNudge& in);
 int lock_on_slot(uint32_t id);
+/* Mask bit from spawn, and a header byte despawn has not cleared. */
+bool enemy_slot_live(uint32_t mask, int slot, int header);
 std::string addon_hud_line();
 std::string addon_menu_line();
 MoveStep addon_take_motion(int vel_x, int vel_z, bool in_shaft, int pos_x, int pos_z);

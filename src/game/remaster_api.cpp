@@ -169,8 +169,8 @@ void remember_player(uint8_t* rdram, int32_t player) {
     note_lock_on(rdram);
 }
 
-bool enemy_live(uint32_t mask, int slot) {
-    return (mask & (0x80000000u >> slot)) != 0;
+bool enemy_live(uint32_t mask, int slot, int header) {
+    return remaster::enemy_slot_live(mask, slot, header);
 }
 
 int64_t enemy_addr(int slot) {
@@ -180,11 +180,11 @@ int64_t enemy_addr(int slot) {
 void read_enemy_spots(uint8_t* rdram, remaster::EnemySpot* spots) {
     const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kEnemyLiveMask)));
     for (int slot = 0; slot < remaster::kEnemySlots; ++slot) {
-        spots[slot].live = enemy_live(mask, slot);
+        const int64_t actor = enemy_addr(slot);
+        spots[slot].live = enemy_live(mask, slot, MEM_BU(0, actor));
         if (!spots[slot].live) {
             continue;
         }
-        const int64_t actor = enemy_addr(slot);
         spots[slot].x = MEM_W(0x1C, actor);
         spots[slot].z = MEM_W(0x24, actor);
     }
@@ -269,18 +269,18 @@ void note_lock_on(uint8_t* rdram) {
         return;
     }
     const uint32_t id = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kLockOnId)));
-    int slot = remaster::lock_on_slot(id);
-    const uint32_t pool = remaster::kEnemyPool;
-    const uint32_t pool_end = pool + static_cast<uint32_t>(remaster::kEnemySlots * remaster::kEnemyStride);
-    if (slot < 0 && id >= pool && id < pool_end) {
-        slot = static_cast<int>((id - pool) / remaster::kEnemyStride);
-    }
-    const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kEnemyLiveMask)));
-    if (slot < 0 || slot >= remaster::kEnemySlots || !enemy_live(mask, slot)) {
+    const int slot = remaster::lock_on_slot(id);
+    if (slot < 0) {
         remaster::addon_set_lock_hp(-1);
         return;
     }
-    remaster::addon_set_lock_hp(MEM_H(0x6E, enemy_addr(slot)));
+    const int64_t actor = enemy_addr(slot);
+    const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kEnemyLiveMask)));
+    if (!enemy_live(mask, slot, MEM_BU(0, actor))) {
+        remaster::addon_set_lock_hp(-1);
+        return;
+    }
+    remaster::addon_set_lock_hp(MEM_H(0x6E, actor));
 }
 
 } // namespace
@@ -318,14 +318,14 @@ extern "C" void remaster_enemy_pool(uint8_t* rdram, recomp_context* ctx) {
     (void)ctx;
     const uint32_t mask = static_cast<uint32_t>(MEM_W(0, guest_at(remaster::kEnemyLiveMask)));
     for (int slot = 0; slot < remaster::kEnemySlots; ++slot) {
-        if (!enemy_live(mask, slot)) {
+        const int64_t actor = enemy_addr(slot);
+        if (!enemy_live(mask, slot, MEM_BU(0, actor))) {
             seen_enemy_hp[slot] = false;
             continue;
         }
-        const int32_t actor = static_cast<int32_t>(enemy_addr(slot));
         int hp_now = MEM_H(0x6E, actor);
         if (seen_enemy_hp[slot] && hp_now < prev_enemy_hp[slot]) {
-            apply_enemy_drop(rdram, actor, prev_enemy_hp[slot] - hp_now);
+            apply_enemy_drop(rdram, static_cast<int32_t>(actor), prev_enemy_hp[slot] - hp_now);
             hp_now = MEM_H(0x6E, actor);
         }
         prev_enemy_hp[slot] = hp_now;

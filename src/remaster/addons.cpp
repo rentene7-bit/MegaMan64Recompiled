@@ -546,6 +546,7 @@ AddonVerb special_for(AddonId id) {
     case AddonId::Fusion:
         return AddonVerb::Fuse;
     case AddonId::Dash:
+    case AddonId::Decoy:
     case AddonId::Analyzer:
     case AddonId::Lantern:
     case AddonId::WallKick:
@@ -925,7 +926,8 @@ AddonEdit addon_flutter_vault(int area, int room, int x, int y, int z, bool acti
     edit.zenny_delta = 800;
     edit.note = "Sealed vault door opened.";
     note_flag(edit, kAddonFlagOrigin + 0x93);
-    addon_queue_vault_door(VaultDoor{0x1B, 7, 192, -1, -352, 0});
+    /* The game's own door already loads room 7. Queuing another request
+     * leaves the warp state set and the same door stops answering. */
     return edit;
 }
 
@@ -1005,13 +1007,33 @@ int lock_on_slot(uint32_t id) {
     if (id == 0 || id == 0xFFFFFFFFu) {
         return -1;
     }
-    if (id < 18u) {
-        return static_cast<int>(id);
+    /* func_8004DA68, then the 0x20 case of func_80053ED8. The low byte's
+     * high bits are the actor class. 0x20 is an NPC in the 18-slot list,
+     * and the slot is the low 5 bits. Class 0 is the player, so a small
+     * id is not a slot. */
+    const uint32_t low = id & 0xFFu;
+    uint32_t kind = low < 0x20u ? (low & 0x10u) : (low & 0xE0u);
+    if (kind == 0xA0u) {
+        kind = 0x80u;
     }
-    if ((id & 0xFFu) < 18u) {
-        return static_cast<int>(id & 0xFFu);
+    if (kind != 0x20u) {
+        return -1;
     }
-    return -1;
+    const uint32_t slot = id & 0x1Fu;
+    if (slot >= static_cast<uint32_t>(kEnemySlots)) {
+        return -1;
+    }
+    return static_cast<int>(slot);
+}
+
+bool enemy_slot_live(uint32_t mask, int slot, int header) {
+    if (slot < 0 || slot >= kEnemySlots) {
+        return false;
+    }
+    if ((mask & (0x80000000u >> slot)) == 0) {
+        return false;
+    }
+    return header != 0;
 }
 
 std::string addon_hud_line() {

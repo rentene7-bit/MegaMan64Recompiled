@@ -310,8 +310,7 @@ int run_addon_tests() {
     expect(closed.zenny_delta == 0, "the flutter vault stays shut without sonar");
     AddonEdit opened_door = addon_flutter_vault(0x1B, 6, -490, -151, -210, true, true);
     expect(opened_door.zenny_delta == 800, "sonar and c-down open the flutter vault");
-    expect(addon_peek_vault_door(door) && door.area == 0x1B && door.room == 7, "the door requests room 7");
-    expect(door.x == 192 && door.z == -352 && door.yaw == 0, "room 7 arrival matches the trace");
+    expect(!addon_peek_vault_door(door), "the flutter payout does not queue a second door");
     AddonEdit twice = addon_flutter_vault(0x1B, 6, -479, -151, -223, true, true);
     expect(twice.zenny_delta == 0, "the flutter vault pays once");
 
@@ -350,6 +349,18 @@ int run_addon_tests() {
 
     addon_reset();
     world = rich();
+    addon_command(AddonVerb::FindJunk, AddonId::Decoy, world);
+    addon_command(AddonVerb::Build, AddonId::Decoy, world);
+    while (addon_selected() != AddonId::Decoy) {
+        addon_request_cycle(1);
+    }
+    addon_request_special();
+    AddonEdit beacon = addon_apply_requests(world);
+    expect(beacon.note.find("no field action") == std::string::npos, "decoy has a field action");
+    expect(addon_decoy_ticks() == 180, "the decoy action places the beacon");
+
+    addon_reset();
+    world = rich();
     addon_command(AddonVerb::FindJunk, AddonId::Analyzer, world);
     addon_command(AddonVerb::Build, AddonId::Analyzer, world);
     addon_set_lock_hp(40);
@@ -357,7 +368,10 @@ int run_addon_tests() {
     const std::string hud = addon_hud_line();
     expect(hud.find("HP 40") != std::string::npos && hud.find("hit 7") != std::string::npos, "analyzer shows the lock-on hp and the last hit");
     expect(kFireButton == 0x8000 && kJumpButton == 0x4000, "fire is B on the held word");
-    expect(lock_on_slot(3) == 3 && lock_on_slot(0x0104) == 4 && lock_on_slot(0) == -1, "lock-on id picks an enemy slot");
+    expect(lock_on_slot(0x23) == 3 && lock_on_slot(0x24) == 4, "lock-on class 0x20 is an npc slot");
+    expect(lock_on_slot(0) == -1 && lock_on_slot(3) == -1, "a clear lock id is not an enemy slot");
+    expect(enemy_slot_live(0x80000000u, 0, 1) && !enemy_slot_live(0, 0, 1), "a live enemy needs its spawn bit");
+    expect(!enemy_slot_live(0x80000000u, 0, 0), "despawn clears the actor header before the mask bit");
     EnemySpot spots[3];
     spots[0] = {0, 0, true};
     spots[1] = {100, 0, true};
