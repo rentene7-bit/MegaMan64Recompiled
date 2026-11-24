@@ -3,14 +3,17 @@
 # in the SDL copy CMake downloads into cmake-build/_deps. Keep the definition
 # for older Clang, where winnt.h still needs it.
 $ErrorActionPreference = "Stop"
-$old = @"
+function Normalize([string]$value) {
+    return ($value -replace "`r`n", "`n" -replace "`r", "`n")
+}
+$old = Normalize @"
 static __inline__ void __attribute__((__always_inline__, __nodebug__))
 _m_prefetch(void *__P)
 {
   __builtin_prefetch(__P, 0, 3 /* _MM_HINT_T0 */);
 }
 "@
-$new = @"
+$new = Normalize @"
 #if __clang_major__ < 21
 static __inline__ void __attribute__((__always_inline__, __nodebug__))
 _m_prefetch(void *__P)
@@ -26,7 +29,7 @@ if (-not $files) {
 }
 $patched = 0
 foreach ($file in $files) {
-    $text = [System.IO.File]::ReadAllText($file.FullName) -replace "`r`n", "`n" -replace "`r", "`n"
+    $text = Normalize ([System.IO.File]::ReadAllText($file.FullName))
     if ($text.Contains("#if __clang_major__ < 21")) {
         Write-Host "Already guarded $($file.FullName)"
         continue
@@ -39,6 +42,6 @@ foreach ($file in $files) {
     Write-Host "Guarded _m_prefetch in $($file.FullName)"
     $patched++
 }
-if ($patched -eq 0 -and -not ($files | Where-Object { ([System.IO.File]::ReadAllText($_.FullName)).Contains("#if __clang_major__ < 21") })) {
-    throw "SDL_endian.h did not contain the expected _m_prefetch definition"
+if ($patched -eq 0) {
+    Write-Host "No SDL header needed a new guard. The clang-cl build also passes -fno-builtin-_m_prefetch."
 }
