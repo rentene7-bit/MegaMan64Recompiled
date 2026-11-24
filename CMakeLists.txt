@@ -237,7 +237,8 @@ endif()
 if (MM64R_RESEARCH)
     list(APPEND SOURCES
         ${CMAKE_SOURCE_DIR}/src/research/script.cpp
-        ${CMAKE_SOURCE_DIR}/src/research/research.cpp)
+        ${CMAKE_SOURCE_DIR}/src/research/research.cpp
+        ${CMAKE_SOURCE_DIR}/src/research/warp_menu.cpp)
 endif()
 
 target_include_directories(MegaMan64Recompiled PRIVATE

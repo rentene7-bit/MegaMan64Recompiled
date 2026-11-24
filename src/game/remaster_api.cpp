@@ -556,3 +556,22 @@ extern "C" void remaster_text_pointer(uint8_t* rdram, recomp_context* ctx) {
 extern "C" void remaster_play_voice(uint8_t* rdram, recomp_context* ctx) {
     _return(ctx, remaster::play_voice(_arg<0, s32>(rdram, ctx)) ? 1 : 0);
 }
+
+#ifndef MM64R_RESEARCH
+extern "C" void remaster_warp_pad(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    (void)ctx;
+}
+extern "C" void remaster_warp_frame(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    (void)ctx;
+}
+extern "C" void remaster_warp_flag_test(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    (void)ctx;
+}
+extern "C" void remaster_warp_flag_set(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    (void)ctx;
+}
+#endif

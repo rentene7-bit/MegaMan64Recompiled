@@ -2,6 +2,9 @@
 #include "disc_internal.hpp"
 #include "remaster.hpp"
 #include "remaster_flags.h"
+#ifdef MM64R_RESEARCH
+#include "research.hpp"
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -529,6 +532,11 @@ void request_field_save() {
 }
 
 void tick_autosave() {
+#ifdef MM64R_RESEARCH
+    if (mm64r::warp_blocks_save()) {
+        return;
+    }
+#endif
     if (g_app_folder.empty()) {
         return;
     }

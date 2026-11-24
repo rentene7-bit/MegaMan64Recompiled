@@ -204,6 +204,29 @@ func = "func_80073510_4E910"
 before_vram = 0x80073558
 text = "remaster_scene_reload(rdram, ctx);"
 
+# Research warp menu. No-ops unless the binary is built with MM64R_RESEARCH.
+# Pad fill is func_80028C14. Clearing happens at the start of the copy into
+# the action word, which is the first reader after that fill.
+[[patches.hook]]
+func = "func_80032D70_E170"
+before_vram = 0x80032D70
+text = "remaster_warp_pad(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8003C208_17608"
+before_vram = 0x8003C208
+text = "remaster_warp_frame(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8006033C_3B73C"
+before_vram = 0x8006033C
+text = "remaster_warp_flag_test(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8006036C_3B76C"
+before_vram = 0x8006036C
+text = "remaster_warp_flag_set(rdram, ctx);"
+
 # Player object is a0. Record it and its live HP at +0x6E.
 [[patches.hook]]
 func = "func_80069A64_44E64"

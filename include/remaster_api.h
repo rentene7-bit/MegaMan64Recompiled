@@ -24,6 +24,10 @@ void remaster_note_boss_bar(uint8_t* rdram, recomp_context* ctx);
 void remaster_shot_spawn(uint8_t* rdram, recomp_context* ctx);
 void remaster_shot_hit(uint8_t* rdram, recomp_context* ctx);
 void remaster_scene_reload(uint8_t* rdram, recomp_context* ctx);
+void remaster_warp_pad(uint8_t* rdram, recomp_context* ctx);
+void remaster_warp_frame(uint8_t* rdram, recomp_context* ctx);
+void remaster_warp_flag_test(uint8_t* rdram, recomp_context* ctx);
+void remaster_warp_flag_set(uint8_t* rdram, recomp_context* ctx);
 void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx);
 }
 

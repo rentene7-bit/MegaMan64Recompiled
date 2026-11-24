@@ -3,6 +3,9 @@
 #include "addons.hpp"
 #include "recomp_ui.h"
 #include "zelda_support.h"
+#ifdef MM64R_RESEARCH
+#include "research.hpp"
+#endif
 
 #include "RmlUi/Core.h"
 
@@ -81,7 +84,22 @@ void update_addon_hud(bool game_started) {
         }
         hud_ready = true;
     }
-    const std::string line = game_started ? remaster::addon_hud_line() : std::string();
+    std::string line = game_started ? remaster::addon_hud_line() : std::string();
+#ifdef MM64R_RESEARCH
+    if (game_started) {
+        const char* menu = mm64r::warp_menu_line();
+        const char* banner = mm64r::warp_banner();
+        if (menu != nullptr && menu[0] != '\0') {
+            line = std::string(menu) + (line.empty() ? "" : "  ") + line;
+        }
+        if (banner != nullptr && banner[0] != '\0') {
+            if (!line.empty()) {
+                line += "  ";
+            }
+            line += banner;
+        }
+    }
+#endif
     Rml::ElementDocument* document = hud_context.get_document();
     if (document == nullptr) {
         return;
