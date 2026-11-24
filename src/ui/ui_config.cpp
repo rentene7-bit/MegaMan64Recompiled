@@ -1,4 +1,5 @@
 #include "recomp_ui.h"
+#include "addons.hpp"
 #include "recomp_input.h"
 #include "zelda_sound.h"
 #include "zelda_config.h"
@@ -578,6 +579,35 @@ public:
                 });
             });
 
+        recompui::register_event(listener, "addon_prev",
+            [](const std::string&, Rml::Event&) {
+                remaster::addon_request_cycle(-1);
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("addon_menu");
+                }
+            });
+        recompui::register_event(listener, "addon_next",
+            [](const std::string&, Rml::Event&) {
+                remaster::addon_request_cycle(1);
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("addon_menu");
+                }
+            });
+        recompui::register_event(listener, "addon_build",
+            [](const std::string&, Rml::Event&) {
+                remaster::addon_request_confirm();
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("addon_menu");
+                }
+            });
+        recompui::register_event(listener, "addon_action",
+            [](const std::string&, Rml::Event&) {
+                remaster::addon_request_special();
+                if (general_model_handle) {
+                    general_model_handle.DirtyVariable("addon_menu");
+                }
+            });
+
         recompui::register_event(listener, "select_secondary_disc",
             [](const std::string&, Rml::Event&) {
                 zelda64::open_file_dialog([](bool success, const std::filesystem::path& path) {
@@ -991,6 +1021,9 @@ public:
         bind_option(constructor, "invert_y_axis_mode", &control_options_context.invert_y_axis_mode);
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
 
+        constructor.BindFunc("addon_menu",
+            [](Rml::Variant& out) { out = remaster::addon_menu_line(); },
+            [](const Rml::Variant&) {});
         constructor.BindFunc("remaster_disc_status",
             [](Rml::Variant& out) { out = remaster::disc_report().summary; },
             [](const Rml::Variant&) {});

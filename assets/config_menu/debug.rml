@@ -10,7 +10,7 @@
                             <label
                                 class="config-debug-option__label"
                             >
-                                <div>Warp</div>
+                                <div>Warp is L + D-pad Up in a research build</div>
                             </label>
                             <div class="config-debug__option-split">
                                 <div class="config-debug__option-controls">

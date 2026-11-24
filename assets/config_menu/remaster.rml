@@ -77,6 +77,16 @@
                             <label class="config-option__tab-label" for="remaster_up_x4">x4</label>
                         </div>
                     </div>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(28)">
+                        <label class="config-option__title">Add-ons</label>
+                        <label>{{addon_menu}}</label>
+                        <div class="config-option__list">
+                            <button class="nav-vert" onclick="addon_prev">Previous</button>
+                            <button class="nav-vert" onclick="addon_next">Next</button>
+                            <button class="nav-vert" onclick="addon_build">Build</button>
+                            <button class="nav-vert" onclick="addon_action">Action</button>
+                        </div>
+                    </div>
                     <div class="config-option" data-event-mouseover="set_cur_config_index(27)">
                         <label class="config-option__title">Dynamic lights</label>
                         <div class="config-option__list">
@@ -110,6 +120,9 @@
                     </p>
                     <p data-if="cur_config_index == 26">
                         Builds larger textures on this machine from your own ROM. Nothing is downloaded or stored in the game download. x2 is the default and stays inside the texture budget. x4 writes fewer, larger images. Off skips the work on a weak GPU.
+                    </p>
+                    <p data-if="cur_config_index == 28">
+                        Previous and Next pick an add-on. Build pays zenny when the junk is recorded. Action pings, opens a vault, fuses, or steps the Deep Gate. The same buttons take controller navigation. Face buttons are unchanged.
                     </p>
                     <p data-if="cur_config_index == 27">
                         Experimental. Off by default. Low and Medium only record a light budget. Real ruin lights are not injected into the frame yet.

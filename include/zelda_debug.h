@@ -1,8 +1,9 @@
 #ifndef __ZELDA_DEBUG_H__
 #define __ZELDA_DEBUG_H__
 
-#include <vector>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace zelda64 {
     struct SceneWarps {
