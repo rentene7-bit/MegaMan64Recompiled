@@ -210,8 +210,8 @@ int main() {
     expect(checklist().find("#28 done") != std::string::npos, "the mimic hook is marked done");
     expect(checklist().find("#24 done") != std::string::npos, "sunken movement is marked done");
     expect(checklist().find("#26 done") != std::string::npos, "enemy remix is marked done");
-    expect(checklist().find("#30 partial") != std::string::npos, "the custodian room stays disabled");
-    expect(checklist().find("#41 partial") != std::string::npos, "the lake shoreline stays disabled");
+    expect(checklist().find("#30 done") != std::string::npos, "the custodian room is marked done");
+    expect(checklist().find("#41 done") != std::string::npos, "the lake shore is marked done");
     reset();
     NeighborView deep;
     deep.deep_gate = true;
@@ -253,6 +253,11 @@ int main() {
     expect(scale_axis(0x1D, 1, true, 100) == 85, "water gear keeps more speed");
     expect(scale_axis(0x1D, 2, false, -100) == -45, "the scale keeps the sign");
     expect(scale_axis(0x1D, 5, false, 100) == 100, "a dry room in the area is full speed");
+    reset();
+    enter_sunken();
+    expect(on_hurt(1, true, 40) == 16, "a bare underwater hit is capped");
+    equip_water_gear();
+    expect(on_hurt(1, true, 40) == 8, "water gear softens the hit further");
 
     reset();
     expect(designated_mimic_chest() == 0x41, "flag 0x441 is the mimic");
@@ -298,14 +303,24 @@ int main() {
     BossRoom rooms[] = {{5, 2}};
     expect(custodian_room(5, 2, rooms, 1), "a listed room is the custodian fight");
     expect(!custodian_room(5, 3, rooms, 1), "a different entrance is not");
-    expect(custodian_room_count() == 0, "the shipping room table waits on add-on 23");
-    expect(!custodian_buff_due(4, 100), "an unlisted room is not buffed");
+    expect(custodian_room_count() == 1, "the custodian uses one room");
+    on_world(0x17, 0, 0);
+    expect(custodian_buff_due(4, 100), "room 0 of area 0x17 is the custodian");
+    on_world(0x17, 2, 0);
+    expect(!custodian_buff_due(4, 100), "room 2 is the void and is not used");
+    on_world(0x17, 3, 0);
+    expect(!custodian_buff_due(4, 100), "room 3 is the airship boss and is not used");
 
     reset();
-    expect(shore_count() == 1 && !player_at_shore(0x12, 0, 0, 0), "the lake row is present and unset");
+    const int shore_x = static_cast<int>(0x24000000u);
+    const int shore_y = static_cast<int>(0xFF690000u);
+    const int shore_z = static_cast<int>(0xF4000000u);
+    expect(player_at_shore(0x0B, 3, shore_x, shore_y, shore_z), "the grass bank is the fishing spot");
+    expect(!player_at_shore(0x0B, 2, shore_x, shore_y, shore_z), "the cliff room is not the shore");
+    expect(!player_at_shore(0x1D, 0, shore_x, shore_y, shore_z), "the sunken sub-gate is not the lake");
     const ShorePoint shore{0x12, 100, 0, 0, 50};
-    expect(at_shore(0x12, 100, 0, 0, &shore, 1), "a filled shoreline accepts the player");
-    expect(!at_shore(0x12, 1000, 0, 0, &shore, 1), "a far point is not the shore");
+    expect(at_shore(0x12, -1, 100, 0, 0, &shore, 1), "a filled shoreline accepts the player");
+    expect(!at_shore(0x12, -1, 1000, 0, 0, &shore, 1), "a far point is not the shore");
     CastUpdate cast = update_cast(true, kJumpButton, kJumpButton, 0, 1.0);
     expect(!cast.started, "jump does not cast");
     cast = update_cast(true, kFireButton, kFireButton, 0, 1.0);

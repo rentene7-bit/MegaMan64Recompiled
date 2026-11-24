@@ -208,6 +208,7 @@ bool sunken_chest_marked();
 bool sunken_area(int area);
 bool sunken_room(int area, int room);
 void note_underwater(int area, int room, bool coolant);
+bool underwater();
 int scale_axis(int area, int room, bool water_gear, int speed);
 
 /* Player buttons live at +0x11C/+0x11E/+0x120 (0x80204ACC/CE/D0).
@@ -344,10 +345,11 @@ struct ShorePoint {
     int y = 0;
     int z = 0;
     int radius = 0;
+    int room = -1;
 };
 int shore_count();
-bool at_shore(int area, int x, int y, int z, const ShorePoint* shores, int count);
-bool player_at_shore(int area, int x, int y, int z);
+bool at_shore(int area, int room, int x, int y, int z, const ShorePoint* shores, int count);
+bool player_at_shore(int area, int room, int x, int y, int z);
 struct CastUpdate {
     bool started = false;
     bool finished = false;

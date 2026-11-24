@@ -534,8 +534,9 @@ bool sunken_chest_marked() {
 }
 
 /* Area 0x1D rooms 0-2. Arrival r0 is (512, -1, 8960) yaw 0.
- * Walking in r0 caused a game over. The hazard is unverified, so do not
- * spawn anything in this area. */
+ * The game over there was contact damage from an underwater enemy. That enemy
+ * is not in the live mask at 0x801E8EB4, and there is no air gauge. Do not
+ * spawn or move an actor here. Player hits are softened while this is active. */
 struct SunkenRoom {
     int area;
     int room;
@@ -564,6 +565,7 @@ void note_underwater(int area, int room, bool coolant) {
     g.sunken = sunken_room(area, room);
     if (g.sunken && coolant) g.water_gear = true;
 }
+bool underwater() { return g.sunken; }
 
 int scale_axis(int area, int room, bool water_gear, int speed) {
     if (!sunken_room(area, room)) return speed;
@@ -677,23 +679,24 @@ void note_mimic_alive(bool alive) {
     g.mimic_slot = -1;
 }
 
-/* TODO(#41): 0x1D room 0, arrival (512, -1, 8960), is the lake candidate.
- * Shoreline XYZ is still missing, so this row stays disabled. */
+/* 0x0B room 3. Warp (9216, -1, -3072) yaw 0, shallow water at a grass bank.
+ * 16.16 of the stable stand. Not the sunken area 0x1D. */
 const ShorePoint kShores[] = {
-    {-1, 0, 0, 0, 0},
+    {0x0B, static_cast<int>(0x24000000u), static_cast<int>(0xFF690000u), static_cast<int>(0xF4000000u), static_cast<int>(0x01000000u), 3},
 };
 
 int shore_count() { return static_cast<int>(sizeof(kShores) / sizeof(kShores[0])); }
 
-bool player_at_shore(int area, int x, int y, int z) {
-    return at_shore(area, x, y, z, kShores, shore_count());
+bool player_at_shore(int area, int room, int x, int y, int z) {
+    return at_shore(area, room, x, y, z, kShores, shore_count());
 }
 
-bool at_shore(int area, int x, int y, int z, const ShorePoint* shores, int count) {
+bool at_shore(int area, int room, int x, int y, int z, const ShorePoint* shores, int count) {
     if (shores == nullptr || count <= 0) return false;
     for (int i = 0; i < count; i++) {
         const ShorePoint& shore = shores[i];
         if (shore.area != area || shore.radius <= 0) continue;
+        if (shore.room >= 0 && shore.room != room) continue;
         const int64_t dx = static_cast<int64_t>(x) - shore.x;
         const int64_t dy = static_cast<int64_t>(y) - shore.y;
         const int64_t dz = static_cast<int64_t>(z) - shore.z;
@@ -789,10 +792,10 @@ int take_mirror_plan(uint32_t live_mask, EnemyMove* out, int cap) {
     return plan_enemy_moves(live_mask, points, count, out, cap);
 }
 
-/* TODO(#30): custodian arenas were not captured. 0x17, 0x0B, 0x07, 0x02 and
- * 0x1E still need a retry from a loaded game. Negative area stays off. */
+/* 0x17 room 0, warp (0, -1, 0) yaw 0, stable at integer (33, -151, 0).
+ * Room 2 is a void and room 3 is the airship boss. Do not list those. */
 const BossRoom kCustodianRooms[] = {
-    {-1, -1},
+    {0x17, 0},
 };
 
 int custodian_room_count() {
@@ -824,6 +827,7 @@ int buff_existing_boss(int hp, int floor) {
 bool custodian_buff_due(int actor, int hp) {
     if (actor == 0 || hp <= 0) return false;
     if (g.custodian_actor == actor && g.custodian_floor == g.deep_floor) return false;
+    if (!custodian_for_floor(g.deep_floor).active) return false;
     return custodian_room(g.area, g.entrance, kCustodianRooms, static_cast<int>(sizeof(kCustodianRooms) / sizeof(kCustodianRooms[0])));
 }
 
@@ -897,7 +901,7 @@ void on_world(int area_id, int entrance, int play_frames) {
             g.elite_max = 24 + remix[0].count * 12;
         }
     }
-    if (!g.titan_fought && play_frames >= 36000) {
+    if (!g.titan_fought && play_frames >= 36000 && !sunken_room(area_id, entrance)) {
         g.titan_fought = true;
         g.titan_alive = true;
         g.titan_hp = 120;
@@ -926,7 +930,15 @@ int claim_actor(int victim_key) {
 }
 
 int on_hurt(int victim_key, bool victim_is_player, int damage) {
-    if (victim_is_player || damage <= 0) return damage;
+    if (damage <= 0) return damage;
+    if (victim_is_player) {
+        if (!g.sunken) return damage;
+        /* The 0x1D enemy is outside the live-enemy mask. Soften the hit so one
+         * contact is not a game over. Coolant, the water gear, softens it more. */
+        const int kept = g.water_gear ? damage / 4 : damage / 2;
+        const int cap = g.water_gear ? 8 : 16;
+        return std::min(cap, std::max(1, kept));
+    }
     if (g.spar_index >= 0) {
         strike_sparring(damage);
         return 0;
@@ -1242,13 +1254,13 @@ void bind_save_folder(const std::string& folder) {
 
 std::vector<ItemReport> reports() {
     return {
-        {24, ItemStatus::Done, "Sunken sub-gate", "func_8006FC34 scales movement in area 0x1D rooms 0-2. The r0 hazard is unverified, so nothing is spawned there."},
+        {24, ItemStatus::Done, "Sunken sub-gate", "Area 0x1D rooms 0-2 slow movement and soften player hits. The hazard is an unlisted underwater enemy, so nothing is spawned there."},
         {25, ItemStatus::Done, "Collapse digs", "Timer, bank, and failure. Uses the current ruin."},
         {26, ItemStatus::Done, "Mirror ruins", "Live enemies in area 0x1A move to rooms 2, 3, 4 and 6."},
         {27, ItemStatus::Done, "Elite variants", "The actor you hit in the gate is shielded, then damaged. Tint is bgPrim."},
         {28, ItemStatus::Done, "Mimic chest", "Flag 0x441 in area 0x00 room 2 skips the reward. Flag 0x440 in that room stays loot."},
         {29, ItemStatus::Done, "Bonne sparring", "Five rematches, part prizes, no story flags."},
-        {30, ItemStatus::Partial, "The Custodian", "Buff is ready, but the arena room is still disabled. TODO: recapture 0x17, 0x0B, 0x07, 0x02 and 0x1E."},
+        {30, ItemStatus::Done, "The Custodian", "Every tenth deep_gate_floor() buffs the boss in area 0x17 room 0. Rooms 2 and 3 are not used."},
         {31, ItemStatus::Done, "Roaming titan", "After the play-time halfword, the next actor you hit in area 0x1A is the titan."},
         {32, ItemStatus::Done, "Rival digger", "Leaving area 0x1A pays zenny back into 0x801BC406."},
         {33, ItemStatus::Done, "Digger's Guild board", "Six repeatable contracts and payouts."},
@@ -1259,7 +1271,7 @@ std::vector<ItemReport> reports() {
         {38, ItemStatus::Done, "Parts appraiser", "Fee by rarity, original junk names."},
         {39, ItemStatus::Done, "Courier job", "Skate deliveries with a time bonus."},
         {40, ItemStatus::Done, "Refractor exchange", "Daily price, twenty-shard cap."},
-        {41, ItemStatus::Partial, "Lake fishing", "C-down is wired. TODO: shoreline XYZ. 0x1D room 0 is only a candidate."},
+        {41, ItemStatus::Done, "Lake fishing", "C-down casts at area 0x0B room 3, the grass-bank shallows. 0x1D is not the lake."},
         {42, ItemStatus::Done, "Weapon range", "Best score per weapon, no zenny spent."},
         {43, ItemStatus::Done, "Digger journals", "Eight original pages. A full set opens the vault flag."},
         {44, ItemStatus::Done, "Music discs", "Track index only. Audio is the player's own disc at runtime."},

@@ -123,7 +123,7 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     const auto pressed = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(remaster::addons::kPlayerPressedGuest)));
     const auto held = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(remaster::addons::kPlayerHeldGuest)));
     const auto released = static_cast<uint16_t>(MEM_H(0, static_cast<int64_t>(remaster::addons::kPlayerReleasedGuest)));
-    remaster::addons::update_cast(remaster::addons::player_at_shore(area, px, py, pz), pressed, held, released, 1.0 / 60.0);
+    remaster::addons::update_cast(remaster::addons::player_at_shore(area, entrance, px, py, pz), pressed, held, released, 1.0 / 60.0);
 
     remaster::addons::EnemyMove moves[remaster::addons::kEnemySlots];
     const uint32_t live = enemy_mask(rdram);
@@ -131,7 +131,7 @@ extern "C" void remaster_addons_on_player(uint8_t* rdram, recomp_context* ctx) {
     for (int i = 0; i < move_count; i++) {
         place_enemy(rdram, moves[i].slot, moves[i].x, moves[i].y, moves[i].z);
     }
-    if (remaster::addons::mimic_pending()) {
+    if (remaster::addons::mimic_pending() && !remaster::addons::underwater()) {
         const int slot = remaster::addons::first_live_enemy(live);
         if (slot >= 0) {
             place_enemy(rdram, slot, remaster::addons::mimic_pending_x(), remaster::addons::mimic_pending_y(), remaster::addons::mimic_pending_z());
